@@ -32,14 +32,21 @@ import {
   FolderDown,
   FolderOpen,
   ChevronDown,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { PreciseNumberInput } from './PreciseNumberInput';
+import { FocusRect } from '../types';
 
 interface ControlPanelProps {
   settings: FrameSettings;
   screenDimensions?: { width: number; height: number };
   onUpdateSettings: (settings: Partial<FrameSettings>) => void;
-  onUpdateFocus: (focus: Partial<FrameSettings['focus']>) => void;
+  onUpdateFocus: (focus: Partial<FocusRect>, targetIndex?: number) => void;
+  onSelectActiveFocus?: (index: number) => void;
+  onAddFocusZone?: () => void;
+  onRemoveFocusZone?: (index: number) => void;
+  onDuplicateFocusZone?: (index: number) => void;
   onImportImage: (file: File) => void;
   onSelectSample: (sampleId: string) => void;
   onExport: (chooseDirectory?: boolean) => void;
@@ -54,6 +61,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   screenDimensions = { width: 204, height: 450 },
   onUpdateSettings,
   onUpdateFocus,
+  onSelectActiveFocus,
+  onAddFocusZone,
+  onRemoveFocusZone,
+  onDuplicateFocusZone,
   onImportImage,
   onSelectSample,
   onExport,
@@ -71,14 +82,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     export: true,
   });
 
+  const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
+  const activeFocusIndex = Math.max(0, Math.min(allFocuses.length - 1, settings.activeFocusIndex ?? 0));
+  const focus = allFocuses[activeFocusIndex] || settings.focus;
+
+  const updateActiveFocus = (updates: Partial<FocusRect>) => {
+    onUpdateFocus(updates, activeFocusIndex);
+  };
+
   const toggleSection = (sectionKey: string) => {
     setOpenSections((prev) => ({
       ...prev,
       [sectionKey]: !prev[sectionKey],
     }));
   };
-
-  const { focus } = settings;
 
   const screenW = screenDimensions.width || 204;
   const screenH = screenDimensions.height || 450;
@@ -686,6 +703,73 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <>
               {focus.enabled ? (
             <div className="space-y-4 macos-card p-4 rounded-xl">
+              {/* Multi-Zone Focus Header & Selector */}
+              <div className="flex flex-col gap-2 bg-white/90 p-2.5 rounded-xl border border-black/10 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Zones de focus ({allFocuses.length})
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {onAddFocusZone && (
+                      <button
+                        type="button"
+                        id="btn-add-new-zone"
+                        onClick={onAddFocusZone}
+                        className="px-2 py-0.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Ajouter une zone</span>
+                      </button>
+                    )}
+                    {allFocuses.length > 1 && onDuplicateFocusZone && (
+                      <button
+                        type="button"
+                        id="btn-dup-zone"
+                        onClick={() => onDuplicateFocusZone(activeFocusIndex)}
+                        title="Dupliquer la zone active"
+                        className="px-1.5 py-0.5 text-[11px] text-slate-600 hover:text-slate-900 bg-black/[0.04] hover:bg-black/[0.08] rounded-md flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
+                    {allFocuses.length > 1 && onRemoveFocusZone && (
+                      <button
+                        type="button"
+                        id="btn-del-zone"
+                        onClick={() => onRemoveFocusZone(activeFocusIndex)}
+                        title="Supprimer la zone active"
+                        className="p-1 text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Zone switcher tabs */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                  {allFocuses.map((f, idx) => (
+                    <button
+                      key={f.id || `zone-tab-${idx}`}
+                      type="button"
+                      onClick={() => onSelectActiveFocus?.(idx)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shrink-0 ${
+                        idx === activeFocusIndex
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-black/[0.04] text-slate-700 hover:bg-black/[0.08]'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          f.enabled ? 'bg-emerald-400' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span>{f.name || `Zone ${idx + 1}`}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Unit Selector & Screen Dimensions info banner */}
               <div className="flex items-center justify-between bg-white/80 p-2 rounded-lg border border-black/10 text-xs">
                 <div className="flex items-center gap-1.5 text-slate-700">

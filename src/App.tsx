@@ -21,7 +21,27 @@ import {
   Rows,
   Columns,
   Trash2,
+  Hand,
 } from 'lucide-react';
+
+const INITIAL_FOCUS_1: FocusRect = {
+  id: 'focus-1',
+  name: 'Zone 1',
+  enabled: true,
+  shape: 'pill',
+  x: 41.4,
+  y: 25.0,
+  width: 17.2,
+  height: 50.0,
+  margin: 5,
+  radius: 999,
+  showBorder: true,
+  borderColor: '#cc0000',
+  borderWidth: 2,
+  borderStyle: 'solid',
+  snapEnabled: true,
+  lockSignature: false,
+};
 
 const DEFAULT_SETTINGS: FrameSettings = {
   borderRadius: 16,
@@ -41,22 +61,9 @@ const DEFAULT_SETTINGS: FrameSettings = {
     offsetY: 3,
     blur: 9,
   },
-  focus: {
-    enabled: true,
-    shape: 'pill',
-    x: 41.4,
-    y: 25.0,
-    width: 17.2,
-    height: 50.0,
-    margin: 5,
-    radius: 999,
-    showBorder: true,
-    borderColor: '#cc0000',
-    borderWidth: 2,
-    borderStyle: 'solid',
-    snapEnabled: true,
-    lockSignature: false,
-  },
+  focus: INITIAL_FOCUS_1,
+  focuses: [INITIAL_FOCUS_1],
+  activeFocusIndex: 0,
   exportScale: 1,
   exportFormat: 'height_450',
   exportCustomHeight: 450,
@@ -75,11 +82,21 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [isDragOverPage, setIsDragOverPage] = useState<boolean>(false);
   const [zoom, setZoom] = useState<number>(1.0);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
+  const [isHandToolActive, setIsHandToolActive] = useState<boolean>(false);
   const [showRulers, setShowRulers] = useState<boolean>(true);
   const [guides, setGuides] = useState<GuideLine[]>([]);
 
   const previewFrameRef = useRef<HTMLDivElement>(null);
   const stageContainerRef = useRef<HTMLDivElement>(null);
+  const panStartRef = useRef<{ mouseX: number; mouseY: number; startPanX: number; startPanY: number }>({
+    mouseX: 0,
+    mouseY: 0,
+    startPanX: 0,
+    startPanY: 0,
+  });
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage({ text, type });
@@ -112,18 +129,122 @@ export default function App() {
   };
 
   const handleZoomIn = () => {
-    setZoom((prev) => Math.min(2.5, Math.round((prev + 0.25) * 100) / 100));
+    setZoom((prev) => {
+      const step = prev >= 2.0 ? 0.5 : 0.25;
+      return Math.min(5.0, Math.round((prev + step) * 100) / 100);
+    });
   };
 
   const handleZoomOut = () => {
-    setZoom((prev) => Math.max(0.5, Math.round((prev - 0.25) * 100) / 100));
+    setZoom((prev) => {
+      const step = prev > 2.0 ? 0.5 : 0.25;
+      return Math.max(0.5, Math.round((prev - step) * 100) / 100);
+    });
   };
 
-  const handleResetZoom = () => {
+  const handleResetZoomAndPan = () => {
     setZoom(1.0);
+    setPan({ x: 0, y: 0 });
+    showToast('Vue recentrée (100%)', 'info');
   };
 
-  // Optional Ctrl/Cmd + Wheel to zoom inside stage
+  const handleToggleHandTool = () => {
+    setIsHandToolActive((prev) => {
+      const next = !prev;
+      showToast(
+        next
+          ? 'Outil Main activé (Glissez avec le clic gauche pour vous déplacer)'
+          : 'Outil Sélection réactivé',
+        'info'
+      );
+      return next;
+    });
+  };
+
+  // Keyboard spacebar and 'H' hotkeys for Photoshop-style pan mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName) ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+      }
+      if (e.key.toLowerCase() === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleToggleHandTool();
+      }
+      if (e.key === 'Escape' && isHandToolActive) {
+        setIsHandToolActive(false);
+        showToast('Outil Sélection réactivé', 'info');
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isHandToolActive]);
+
+  // Stage pointer dragging for panning canvas (Photoshop style)
+  const handleStagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Only pan if middle click (button 1), spacebar held, hand tool active, or clicking stage background
+    const isBackground =
+      e.target === stageContainerRef.current ||
+      (e.target as HTMLElement).id === 'canvas-pan-surface' ||
+      (e.target as HTMLElement).classList.contains('bg-canvas-dots') ||
+      (e.target as HTMLElement).closest('#canvas-pan-surface') !== null;
+
+    if (isSpacePressed || isHandToolActive || e.button === 1 || (isBackground && (zoom > 1.0 || pan.x !== 0 || pan.y !== 0))) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStartRef.current = {
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        startPanX: pan.x,
+        startPanY: pan.y,
+      };
+    }
+  };
+
+  useEffect(() => {
+    if (!isPanning) return;
+
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      const deltaX = e.clientX - panStartRef.current.mouseX;
+      const deltaY = e.clientY - panStartRef.current.mouseY;
+      setPan({
+        x: Math.round(panStartRef.current.startPanX + deltaX),
+        y: Math.round(panStartRef.current.startPanY + deltaY),
+      });
+    };
+
+    const handleGlobalPointerUp = () => {
+      setIsPanning(false);
+    };
+
+    window.addEventListener('pointermove', handleGlobalPointerMove);
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalPointerMove);
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+    };
+  }, [isPanning]);
+
+  // Ctrl/Cmd + Wheel to zoom, and standard wheel to pan when zoomed
   useEffect(() => {
     const stageEl = stageContainerRef.current;
     if (!stageEl) return;
@@ -132,26 +253,137 @@ export default function App() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         if (e.deltaY < 0) {
-          setZoom((prev) => Math.min(2.5, Math.round((prev + 0.1) * 100) / 100));
+          setZoom((prev) => Math.min(5.0, Math.round((prev + (prev >= 2.0 ? 0.25 : 0.1)) * 100) / 100));
         } else {
-          setZoom((prev) => Math.max(0.5, Math.round((prev - 0.1) * 100) / 100));
+          setZoom((prev) => Math.max(0.5, Math.round((prev - (prev > 2.0 ? 0.25 : 0.1)) * 100) / 100));
         }
+      } else if (zoom > 1.0 || isHandToolActive || isSpacePressed) {
+        // Natural pan scrolling
+        e.preventDefault();
+        setPan((prev) => ({
+          x: Math.round(prev.x - e.deltaX),
+          y: Math.round(prev.y - e.deltaY),
+        }));
       }
     };
 
     stageEl.addEventListener('wheel', handleWheel, { passive: false });
     return () => stageEl.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [zoom, isHandToolActive, isSpacePressed]);
 
   const handleUpdateSettings = (newSettings: Partial<FrameSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
-  const handleUpdateFocus = (newFocus: Partial<FocusRect>) => {
-    setSettings((prev) => ({
-      ...prev,
-      focus: { ...prev.focus, ...newFocus },
-    }));
+  const handleUpdateFocus = (newFocus: Partial<FocusRect>, targetIndex?: number) => {
+    setSettings((prev) => {
+      const idx = targetIndex !== undefined ? targetIndex : prev.activeFocusIndex ?? 0;
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
+      const safeIdx = Math.max(0, Math.min(curFocuses.length - 1, idx));
+      curFocuses[safeIdx] = { ...curFocuses[safeIdx], ...newFocus };
+
+      return {
+        ...prev,
+        focuses: curFocuses,
+        focus: curFocuses[safeIdx],
+      };
+    });
+  };
+
+  const handleSelectActiveFocus = (index: number) => {
+    setSettings((prev) => {
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? prev.focuses : [prev.focus];
+      const safeIdx = Math.max(0, Math.min(curFocuses.length - 1, index));
+      return {
+        ...prev,
+        activeFocusIndex: safeIdx,
+        focus: curFocuses[safeIdx],
+      };
+    });
+  };
+
+  const handleAddFocusZone = () => {
+    setSettings((prev) => {
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
+      const newZoneNumber = curFocuses.length + 1;
+      const screenW = screenDimensions.width || 204;
+      const screenH = screenDimensions.height || 450;
+
+      // Create a default 55px x 55px Circle or Pill zone offset vertically
+      const circleSizeWPct = (55 / screenW) * 100;
+      const circleSizeHPct = (55 / screenH) * 100;
+      const newXPct = ((screenW - 55) / 2 / screenW) * 100;
+      const offsetTop = Math.min(75, 20 + (curFocuses.length % 4) * 18);
+
+      const newZone: FocusRect = {
+        id: 'focus-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: `Zone ${newZoneNumber}`,
+        enabled: true,
+        shape: 'circle',
+        x: Math.round(newXPct * 10) / 10,
+        y: Math.round(offsetTop * 10) / 10,
+        width: Math.round(circleSizeWPct * 10) / 10,
+        height: Math.round(circleSizeHPct * 10) / 10,
+        margin: 0,
+        radius: 999,
+        showBorder: true,
+        borderColor: '#cc0000',
+        borderWidth: 2,
+        borderStyle: 'solid',
+        snapEnabled: true,
+        lockSignature: false,
+      };
+
+      const updated = [...curFocuses, newZone];
+      return {
+        ...prev,
+        focuses: updated,
+        activeFocusIndex: updated.length - 1,
+        focus: newZone,
+      };
+    });
+    showToast('Nouvelle zone de focus ajoutée !', 'success');
+  };
+
+  const handleRemoveFocusZone = (indexToRemove: number) => {
+    setSettings((prev) => {
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
+      if (curFocuses.length <= 1) {
+        showToast('Impossible de supprimer la seule zone.', 'info');
+        return prev;
+      }
+      const updated = curFocuses.filter((_, i) => i !== indexToRemove);
+      const nextActive = Math.max(0, Math.min(updated.length - 1, (prev.activeFocusIndex ?? 0) >= indexToRemove ? (prev.activeFocusIndex ?? 0) - 1 : (prev.activeFocusIndex ?? 0)));
+      return {
+        ...prev,
+        focuses: updated,
+        activeFocusIndex: nextActive,
+        focus: updated[nextActive],
+      };
+    });
+    showToast('Zone de focus supprimée', 'info');
+  };
+
+  const handleDuplicateFocusZone = (indexToDup: number) => {
+    setSettings((prev) => {
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
+      const source = curFocuses[indexToDup] || curFocuses[0];
+      const newZoneNumber = curFocuses.length + 1;
+      const dup: FocusRect = {
+        ...source,
+        id: 'focus-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: `Zone ${newZoneNumber}`,
+        y: Math.min(80, source.y + 8),
+      };
+      const updated = [...curFocuses, dup];
+      return {
+        ...prev,
+        focuses: updated,
+        activeFocusIndex: updated.length - 1,
+        focus: dup,
+      };
+    });
+    showToast('Zone de focus dupliquée !', 'success');
   };
 
   const handleImportImage = (file: File) => {
@@ -306,36 +538,43 @@ export default function App() {
         // Draw Base Image
         ctx.drawImage(img, pad, pad, innerW, innerH);
 
-        // Draw Dimming Veil over everything EXCEPT the focus area using evenodd cutout
-        if (settings.focus.enabled) {
-          const imgFocusX = pad + (innerW * settings.focus.x) / 100;
-          const imgFocusY = pad + (innerH * settings.focus.y) / 100;
-          const imgFocusW = (innerW * settings.focus.width) / 100;
-          const imgFocusH = (innerH * settings.focus.height) / 100;
-          
-          let fr = Math.min(imgFocusH / 2, (settings.focus.radius || 12) * effectiveScale);
-          if (settings.focus.shape === 'pill') {
-            fr = Math.min(imgFocusW, imgFocusH) / 2;
-          } else if (settings.focus.shape === 'rectangle') {
-            fr = 0;
-          }
+        // Draw Dimming Veil over everything EXCEPT all enabled focus areas using evenodd cutout
+        const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
+        const enabledFocuses = allFocuses.filter((f) => f.enabled);
 
+        if (enabledFocuses.length > 0) {
           ctx.beginPath();
           // Outer bounds of screenshot with bleed to prevent subpixel edge lines
           ctx.rect(pad - 2, pad - 2, innerW + 4, innerH + 4);
-          // Inner focus cutout (preserves 100% crisp focus image without double drawing or halo)
-          if (settings.focus.shape === 'circle') {
-            ctx.ellipse(
-              imgFocusX + imgFocusW / 2,
-              imgFocusY + imgFocusH / 2,
-              imgFocusW / 2,
-              imgFocusH / 2,
-              0,
-              0,
-              Math.PI * 2
-            );
-          } else {
-            ctx.roundRect(imgFocusX, imgFocusY, imgFocusW, imgFocusH, fr);
+
+          // Cutout for each enabled focus
+          for (const f of enabledFocuses) {
+            const imgFocusX = pad + (innerW * f.x) / 100;
+            const imgFocusY = pad + (innerH * f.y) / 100;
+            const imgFocusW = (innerW * f.width) / 100;
+            const imgFocusH = (innerH * f.height) / 100;
+
+            let fr = Math.min(imgFocusH / 2, (f.radius || 12) * effectiveScale);
+            if (f.shape === 'pill' || f.shape === 'circle') {
+              fr = Math.min(imgFocusW, imgFocusH) / 2;
+            } else if (f.shape === 'rectangle') {
+              fr = 0;
+            }
+
+            if (f.shape === 'circle') {
+              ctx.moveTo(imgFocusX + imgFocusW, imgFocusY + imgFocusH / 2);
+              ctx.ellipse(
+                imgFocusX + imgFocusW / 2,
+                imgFocusY + imgFocusH / 2,
+                imgFocusW / 2,
+                imgFocusH / 2,
+                0,
+                0,
+                Math.PI * 2
+              );
+            } else {
+              ctx.roundRect(imgFocusX, imgFocusY, imgFocusW, imgFocusH, fr);
+            }
           }
 
           ctx.fillStyle = settings.dimmingType === 'light' 
@@ -350,44 +589,46 @@ export default function App() {
         }
         ctx.restore();
 
-        // 4. Draw Focus Border with exact coordinates & crisp stroke if enabled
-        if (settings.focus.enabled && settings.focus.showBorder) {
-          const boxX = pad + (innerW * settings.focus.x) / 100;
-          const boxY = pad + (innerH * settings.focus.y) / 100;
-          const boxW = (innerW * settings.focus.width) / 100;
-          const boxH = (innerH * settings.focus.height) / 100;
-          
-          let boxR = Math.min(boxH / 2, (settings.focus.radius || 12) * effectiveScale);
-          if (settings.focus.shape === 'pill') {
-            boxR = Math.min(boxW, boxH) / 2;
-          } else if (settings.focus.shape === 'rectangle') {
-            boxR = 0;
-          }
+        // 4. Draw Focus Borders with exact coordinates & crisp stroke if enabled
+        for (const f of allFocuses) {
+          if (f.enabled && f.showBorder) {
+            const boxX = pad + (innerW * f.x) / 100;
+            const boxY = pad + (innerH * f.y) / 100;
+            const boxW = (innerW * f.width) / 100;
+            const boxH = (innerH * f.height) / 100;
 
-          ctx.save();
-          const bWidth = (settings.focus.borderWidth || 2) * effectiveScale;
+            let boxR = Math.min(boxH / 2, (f.radius || 12) * effectiveScale);
+            if (f.shape === 'pill' || f.shape === 'circle') {
+              boxR = Math.min(boxW, boxH) / 2;
+            } else if (f.shape === 'rectangle') {
+              boxR = 0;
+            }
 
-          ctx.beginPath();
-          if (settings.focus.shape === 'circle') {
-            ctx.ellipse(
-              boxX + boxW / 2,
-              boxY + boxH / 2,
-              boxW / 2,
-              boxH / 2,
-              0,
-              0,
-              Math.PI * 2
-            );
-          } else {
-            ctx.roundRect(boxX, boxY, boxW, boxH, boxR);
+            ctx.save();
+            const bWidth = (f.borderWidth || 2) * effectiveScale;
+
+            ctx.beginPath();
+            if (f.shape === 'circle') {
+              ctx.ellipse(
+                boxX + boxW / 2,
+                boxY + boxH / 2,
+                boxW / 2,
+                boxH / 2,
+                0,
+                0,
+                Math.PI * 2
+              );
+            } else {
+              ctx.roundRect(boxX, boxY, boxW, boxH, boxR);
+            }
+            ctx.strokeStyle = f.borderColor || '#cc0000';
+            ctx.lineWidth = bWidth;
+            if (f.borderStyle === 'dashed') {
+              ctx.setLineDash([4 * effectiveScale, 4 * effectiveScale]);
+            }
+            ctx.stroke();
+            ctx.restore();
           }
-          ctx.strokeStyle = settings.focus.borderColor || '#cc0000';
-          ctx.lineWidth = bWidth;
-          if (settings.focus.borderStyle === 'dashed') {
-            ctx.setLineDash([4 * effectiveScale, 4 * effectiveScale]);
-          }
-          ctx.stroke();
-          ctx.restore();
         }
 
         resolve(canvas.toDataURL('image/png'));
@@ -695,6 +936,28 @@ export default function App() {
 
               <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
 
+              {/* Hand Tool / Pan Mode Toggle Button */}
+              <button
+                type="button"
+                id="btn-toggle-hand-tool"
+                onClick={handleToggleHandTool}
+                title={
+                  isHandToolActive
+                    ? 'Outil Main ACTIF : Déplacer le canevas au clic gauche (Raccourci: H ou Espace)'
+                    : 'Outil Main : Déplacer le canevas au clic gauche (Raccourci: H ou Espace)'
+                }
+                className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  isHandToolActive
+                    ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Hand className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Main</span>
+              </button>
+
+              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+
               {/* Zoom Controls (macOS Group) */}
               <div className="flex items-center gap-1">
                 <button
@@ -708,14 +971,14 @@ export default function App() {
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
 
-                {/* Zoom Level Presets / Display */}
+                {/* Zoom Level Presets / Display (50% to 500%) */}
                 <div className="flex items-center gap-0.5">
-                  {[0.75, 1.0, 1.5].map((z) => (
+                  {[1.0, 2.0, 3.0, 5.0].map((z) => (
                     <button
                       key={z}
                       type="button"
                       onClick={() => setZoom(z)}
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
                         zoom === z
                           ? 'macos-segmented-item-active text-slate-900 font-semibold'
                           : 'text-slate-500 hover:text-slate-900'
@@ -724,8 +987,8 @@ export default function App() {
                       {Math.round(z * 100)}%
                     </button>
                   ))}
-                  {![0.75, 1.0, 1.5].includes(zoom) && (
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md macos-segmented-item-active text-slate-900 font-semibold">
+                  {![1.0, 2.0, 3.0, 5.0].includes(zoom) && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md macos-segmented-item-active text-slate-900 font-semibold">
                       {Math.round(zoom * 100)}%
                     </span>
                   )}
@@ -735,41 +998,61 @@ export default function App() {
                   type="button"
                   id="btn-zoom-in"
                   onClick={handleZoomIn}
-                  disabled={zoom >= 2.5}
-                  title="Zoom avant (max 250%)"
+                  disabled={zoom >= 5.0}
+                  title="Zoom avant (max 500%)"
                   className="p-1 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
 
-                {zoom !== 1.0 && (
+                {(zoom !== 1.0 || pan.x !== 0 || pan.y !== 0) && (
                   <button
                     type="button"
-                    id="btn-reset-zoom"
-                    onClick={handleResetZoom}
-                    title="Réinitialiser le zoom (100%)"
-                    className="p-1 rounded-md text-slate-500 hover:bg-white hover:text-slate-900 transition-all cursor-pointer"
+                    id="btn-reset-zoom-pan"
+                    onClick={handleResetZoomAndPan}
+                    title="Recentrer la vue et réinitialiser le zoom (100%)"
+                    className="flex items-center gap-1 px-1.5 py-1 text-[11px] rounded-md text-blue-600 hover:bg-blue-50 font-medium transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
+                    <span className="text-[10px]">Recentrer</span>
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Interactive Canvas Background with Grid Dots and Scroll Viewport */}
+          {/* Interactive Canvas Background with Grid Dots and Infinite Drag Pan Viewport */}
           <div
             ref={stageContainerRef}
-            className="w-full flex-1 flex flex-col items-center justify-center py-8 relative overflow-auto min-h-[580px] xl:min-h-[680px]"
+            id="canvas-pan-surface"
+            onPointerDown={handleStagePointerDown}
+            className={`w-full flex-1 flex flex-col items-center justify-center py-8 relative overflow-hidden select-none min-h-[580px] xl:min-h-[680px] touch-none ${
+              isSpacePressed || isHandToolActive
+                ? isPanning
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : zoom > 1.0 || pan.x !== 0 || pan.y !== 0
+                ? isPanning
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : ''
+            }`}
           >
             {/* Photoshop-style Vertical Shape Toolbar in LiquidGlass (Draggable) */}
             <PhotoshopToolbar
               focus={settings.focus}
+              focuses={settings.focuses}
+              activeFocusIndex={settings.activeFocusIndex}
               onUpdateFocus={handleUpdateFocus}
+              onSelectActiveFocus={handleSelectActiveFocus}
+              onAddFocusZone={handleAddFocusZone}
+              onRemoveFocusZone={handleRemoveFocusZone}
               screenW={screenDimensions.width}
               screenH={screenDimensions.height}
               containerRef={stageContainerRef}
               onSaveAs={() => handleExportPng(true)}
+              isHandToolActive={isHandToolActive}
+              onToggleHandTool={handleToggleHandTool}
             />
 
             {/* Container for the 240px constrained card (macOS Frosted Tile) */}
@@ -782,10 +1065,14 @@ export default function App() {
                 settings={settings}
                 imageSrc={currentImageSrc}
                 onUpdateFocus={handleUpdateFocus}
+                onSelectActiveFocus={handleSelectActiveFocus}
                 previewRef={previewFrameRef}
                 isExporting={isExporting}
                 onDimensionsChange={setScreenDimensions}
                 zoom={zoom}
+                pan={pan}
+                isSpacePressed={isSpacePressed}
+                isHandToolActive={isHandToolActive}
                 showRulers={showRulers}
                 guides={guides}
                 onUpdateGuides={setGuides}
@@ -797,7 +1084,7 @@ export default function App() {
           <div className="w-full mt-4 pt-3 border-t border-black/[0.06] text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-slate-600 font-medium">
               <Focus className="w-3.5 h-3.5 text-slate-700" />
-              Déplacez et redimensionnez la zone de focus à la souris. Zoom : Ctrl + Molette.
+              Navigation : Maintenez <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Espace</kbd> + Clic gauche pour vous déplacer librement. Zoom : <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Ctrl</kbd> + Molette.
             </span>
             <span className="font-mono text-[11px] text-slate-400">Export PNG HD</span>
           </div>
@@ -810,6 +1097,10 @@ export default function App() {
             screenDimensions={screenDimensions}
             onUpdateSettings={handleUpdateSettings}
             onUpdateFocus={handleUpdateFocus}
+            onSelectActiveFocus={handleSelectActiveFocus}
+            onAddFocusZone={handleAddFocusZone}
+            onRemoveFocusZone={handleRemoveFocusZone}
+            onDuplicateFocusZone={handleDuplicateFocusZone}
             onImportImage={handleImportImage}
             onSelectSample={handleSelectSample}
             onExport={handleExportPng}

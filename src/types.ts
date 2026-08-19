@@ -16,6 +16,8 @@ export interface CustomShadowSettings {
 }
 
 export interface FocusRect {
+  id?: string;
+  name?: string;
   enabled: boolean;
   shape?: FocusShape; // 'rounded' | 'pill' | 'circle' | 'rectangle'
   x: number; // percentage (supports negative and > 100 for overflow)
@@ -47,6 +49,8 @@ export interface FrameSettings {
   shadow: ShadowStyle;
   shadowSettings: CustomShadowSettings;
   focus: FocusRect;
+  focuses?: FocusRect[];
+  activeFocusIndex?: number;
   exportScale: number; // 1, 2, 3, 4
   exportFormat: ExportFormatPreset;
   exportCustomHeight: number; // in px (e.g. 450, 800, 1080)

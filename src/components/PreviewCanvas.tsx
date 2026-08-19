@@ -1,17 +1,20 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { FrameSettings, GuideLine } from '../types';
-import { Crosshair } from 'lucide-react';
+import { FrameSettings, FocusRect, GuideLine } from '../types';
 import { Rulers } from './Rulers';
 import { GuideLinesOverlay } from './GuideLinesOverlay';
 
 interface PreviewCanvasProps {
   settings: FrameSettings;
   imageSrc: string;
-  onUpdateFocus: (focus: Partial<FrameSettings['focus']>) => void;
+  onUpdateFocus: (focus: Partial<FocusRect>, targetIndex?: number) => void;
+  onSelectActiveFocus?: (index: number) => void;
   previewRef: React.RefObject<HTMLDivElement | null>;
   isExporting?: boolean;
   onDimensionsChange?: (dims: { width: number; height: number }) => void;
   zoom?: number;
+  pan?: { x: number; y: number };
+  isSpacePressed?: boolean;
+  isHandToolActive?: boolean;
   showRulers?: boolean;
   guides?: GuideLine[];
   onUpdateGuides?: (guides: GuideLine[]) => void;
@@ -21,15 +24,18 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   settings,
   imageSrc,
   onUpdateFocus,
+  onSelectActiveFocus,
   previewRef,
   isExporting = false,
   onDimensionsChange,
   zoom = 1.0,
+  pan = { x: 0, y: 0 },
+  isSpacePressed = false,
+  isHandToolActive = false,
   showRulers = true,
   guides = [],
   onUpdateGuides,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
   const screenshotBoxRef = useRef<HTMLDivElement>(null);
   const [renderedDimensions, setRenderedDimensions] = useState<{ width: number; height: number }>({
     width: 204,
@@ -39,15 +45,26 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const [dragAction, setDragAction] = useState<
     'move' | 'nw' | 'ne' | 'se' | 'sw' | 'e' | 'w' | 'n' | 's' | null
   >(null);
+  const [dragFocusIndex, setDragFocusIndex] = useState<number>(0);
   const [dragStart, setDragStart] = useState<{
     mouseX: number;
     mouseY: number;
-    startFocus: FrameSettings['focus'];
+    startFocus: FocusRect;
   } | null>(null);
   const [isSnappedX, setIsSnappedX] = useState(false);
   const [isSnappedY, setIsSnappedY] = useState(false);
 
-  const { focus } = settings;
+  // Normalize focuses array
+  const allFocuses: FocusRect[] =
+    settings.focuses && settings.focuses.length > 0
+      ? settings.focuses
+      : [settings.focus];
+
+  const activeFocusIndex = Math.max(
+    0,
+    Math.min(allFocuses.length - 1, settings.activeFocusIndex ?? 0)
+  );
+  const activeFocus = allFocuses[activeFocusIndex] || allFocuses[0] || settings.focus;
 
   // Observe actual screenshot rendered dimensions with subpixel accuracy
   useEffect(() => {
@@ -100,18 +117,25 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   // Mouse & Touch handling for direct on-canvas drag & resize with magnetic snapping
   const handlePointerDown = (
     e: React.PointerEvent,
-    action: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'e' | 'w' | 'n' | 's'
+    action: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'e' | 'w' | 'n' | 's',
+    focusIdx: number
   ) => {
-    if (!focus.enabled || isExporting) return;
+    const targetFocus = allFocuses[focusIdx];
+    if (!targetFocus || !targetFocus.enabled || isExporting) return;
     e.preventDefault();
     e.stopPropagation();
 
+    if (focusIdx !== activeFocusIndex) {
+      onSelectActiveFocus?.(focusIdx);
+    }
+
     setIsDragging(true);
     setDragAction(action);
+    setDragFocusIndex(focusIdx);
     setDragStart({
       mouseX: e.clientX,
       mouseY: e.clientY,
-      startFocus: { ...focus },
+      startFocus: { ...targetFocus },
     });
   };
 
@@ -126,7 +150,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       const deltaYPercent = ((e.clientY - dragStart.mouseY) / screenH) * 100;
 
       const { startFocus } = dragStart;
-      const snapEnabled = focus.snapEnabled !== false;
+      const snapEnabled = startFocus.snapEnabled !== false;
       const snapTolXPct = (6 / screenW) * 100; // ~6px threshold
       const snapTolYPct = (6 / screenH) * 100; // ~6px threshold
 
@@ -156,10 +180,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         setIsSnappedX(snappedX);
         setIsSnappedY(snappedY);
 
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            y: Math.round(newY * 1000) / 1000,
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'e') {
         // Right edge handle: expands/contracts symmetrically from center
         const startCenterX = startFocus.x + startFocus.width / 2;
@@ -168,10 +195,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           newW = 100;
         }
         const newX = startCenterX - newW / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'w') {
         // Left edge handle: expands/contracts symmetrically from center
         const startCenterX = startFocus.x + startFocus.width / 2;
@@ -180,10 +210,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           newW = 100;
         }
         const newX = startCenterX - newW / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 's') {
         // Bottom edge handle: expands/contracts symmetrically from center
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -192,10 +225,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           newH = 100;
         }
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          y: Math.round(newY * 10) / 10,
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            y: Math.round(newY * 1000) / 1000,
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'n') {
         // Top edge handle: expands/contracts symmetrically from center
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -204,10 +240,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           newH = 100;
         }
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          y: Math.round(newY * 10) / 10,
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            y: Math.round(newY * 1000) / 1000,
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'se') {
         const startCenterX = startFocus.x + startFocus.width / 2;
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -215,12 +254,15 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         let newH = Math.max(2, startFocus.height + deltaYPercent * 2);
         const newX = startCenterX - newW / 2;
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            y: Math.round(newY * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'nw') {
         const startCenterX = startFocus.x + startFocus.width / 2;
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -228,12 +270,15 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         let newH = Math.max(2, startFocus.height - deltaYPercent * 2);
         const newX = startCenterX - newW / 2;
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            y: Math.round(newY * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'ne') {
         const startCenterX = startFocus.x + startFocus.width / 2;
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -241,12 +286,15 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         let newH = Math.max(2, startFocus.height - deltaYPercent * 2);
         const newX = startCenterX - newW / 2;
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            y: Math.round(newY * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       } else if (dragAction === 'sw') {
         const startCenterX = startFocus.x + startFocus.width / 2;
         const startCenterY = startFocus.y + startFocus.height / 2;
@@ -254,15 +302,18 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         let newH = Math.max(2, startFocus.height + deltaYPercent * 2);
         const newX = startCenterX - newW / 2;
         const newY = startCenterY - newH / 2;
-        onUpdateFocus({
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-          width: Math.max(2, Math.round(newW * 10) / 10),
-          height: Math.max(2, Math.round(newH * 10) / 10),
-        });
+        onUpdateFocus(
+          {
+            x: Math.round(newX * 1000) / 1000,
+            y: Math.round(newY * 1000) / 1000,
+            width: Math.max(2, Math.round(newW * 1000) / 1000),
+            height: Math.max(2, Math.round(newH * 1000) / 1000),
+          },
+          dragFocusIndex
+        );
       }
     },
-    [isDragging, dragStart, dragAction, onUpdateFocus, focus.snapEnabled]
+    [isDragging, dragStart, dragAction, dragFocusIndex, onUpdateFocus]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -284,46 +335,25 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     }
   }, [isDragging, handlePointerMove, handlePointerUp]);
 
-  // CSS clip-path for 100% opacity focus zone
-  const clipInsetTop = focus.y;
-  const clipInsetRight = 100 - (focus.x + focus.width);
-  const clipInsetBottom = 100 - (focus.y + focus.height);
-  const clipInsetLeft = focus.x;
-  const clipPathStyle = focus.enabled
-    ? `inset(${clipInsetTop}% ${clipInsetRight}% ${clipInsetBottom}% ${clipInsetLeft}% round ${focus.radius}px)`
-    : 'none';
-
-  // Exact pixel conversion for display and guidelines
+  // Exact pixel conversion for active focus
   const curScreenW = renderedDimensions.width || 204;
   const curScreenH = renderedDimensions.height || 450;
-  const focusXPx = Math.round((focus.x / 100) * curScreenW);
-  const focusYPx = Math.round((focus.y / 100) * curScreenH);
-  const focusWPx = Math.round((focus.width / 100) * curScreenW);
-  const focusHPx = Math.round((focus.height / 100) * curScreenH);
+  const activeFocusXPx = Math.round((activeFocus.x / 100) * curScreenW);
+  const activeFocusYPx = Math.round((activeFocus.y / 100) * curScreenH);
+  const activeFocusWPx = Math.round((activeFocus.width / 100) * curScreenW);
+  const activeFocusHPx = Math.round((activeFocus.height / 100) * curScreenH);
 
-  // Exact floating point coordinates for 0-offset SVG mask cutout and contour border stroke
-  const exactFocusX = (focus.x / 100) * curScreenW;
-  const exactFocusY = (focus.y / 100) * curScreenH;
-  const exactFocusW = (focus.width / 100) * curScreenW;
-  const exactFocusH = (focus.height / 100) * curScreenH;
-
-  let exactRadius = 0;
-  if (focus.shape === 'pill') {
-    exactRadius = Math.min(exactFocusW, exactFocusH) / 2;
-  } else if (focus.shape === 'rectangle') {
-    exactRadius = 0;
-  } else if (focus.shape === 'circle') {
-    exactRadius = Math.min(exactFocusW, exactFocusH) / 2;
-  } else {
-    exactRadius = Math.min(focus.radius, exactFocusW / 2, exactFocusH / 2);
-  }
-
-  // Check centering alignments
-  const isHorizontallyCentered = Math.abs((focus.x + focus.width / 2) - 50) < 0.6 || isSnappedX;
-  const isVerticallyCentered = Math.abs((focus.y + focus.height / 2) - 50) < 0.6 || isSnappedY;
+  // Check centering alignments for active focus
+  const isHorizontallyCentered =
+    Math.abs(activeFocus.x + activeFocus.width / 2 - 50) < 0.6 || isSnappedX;
+  const isVerticallyCentered =
+    Math.abs(activeFocus.y + activeFocus.height / 2 - 50) < 0.6 || isSnappedY;
 
   // Handle dragging out a new guide from ruler
-  const handleStartDragNewGuide = (orientation: 'horizontal' | 'vertical', e: React.PointerEvent) => {
+  const handleStartDragNewGuide = (
+    orientation: 'horizontal' | 'vertical',
+    e: React.PointerEvent
+  ) => {
     if (!onUpdateGuides || isExporting) return;
     e.preventDefault();
     e.stopPropagation();
@@ -338,15 +368,19 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     onUpdateGuides([...guides, newGuide]);
   };
 
+  const hasAnyFocusEnabled = allFocuses.some((f) => f.enabled);
+
   return (
     <div className="flex flex-col items-center justify-center w-full">
-      {/* Zoomable Container with smooth transition */}
+      {/* Zoomable & Pannable Container with smooth 60fps/120fps hardware transform */}
       <div
         id="preview-zoom-wrapper"
-        className="transition-transform duration-150 flex items-center justify-center origin-top select-none"
+        className="transition-transform duration-75 flex items-center justify-center select-none"
         style={{
-          transform: isExporting ? 'none' : `scale(${zoom})`,
-          transformOrigin: 'top center',
+          transform: isExporting
+            ? 'none'
+            : `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
+          transformOrigin: 'center center',
         }}
       >
         {/* Outer constraint wrapper: strictly max 240px wide with transparent checkboard preview */}
@@ -363,10 +397,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               screenshotWidth={curScreenW}
               screenshotHeight={curScreenH}
               padding={settings.padding}
-              focusX={focusXPx}
-              focusY={focusYPx}
-              focusW={focusWPx}
-              focusH={focusHPx}
+              focusX={activeFocusXPx}
+              focusY={activeFocusYPx}
+              focusW={activeFocusWPx}
+              focusH={activeFocusHPx}
               zoom={1.0}
               onStartDragNewGuide={handleStartDragNewGuide}
             />
@@ -418,41 +452,31 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
                 }}
               >
-                {/* Layer 1: Single Native Base Screenshot (100% crystal clear original quality with natural aspect ratio) */}
+                {/* Layer 1: Base Screenshot Image (Always crisp & intact, never split) */}
                 <img
-                  id="base-screenshot"
+                  id="target-screenshot-img"
                   src={imageSrc}
-                  alt="Capture d'écran importée"
+                  alt="Capture d'écran originale"
                   className="w-full h-auto block select-none pointer-events-none object-contain"
                   style={{
-                    borderRadius: `${settings.screenshotRadius}px`,
                     maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
                   }}
-                  referrerPolicy="no-referrer"
                   crossOrigin="anonymous"
+                  draggable={false}
                 />
 
-                {/* Layer 2: Seamless Dimming Veil with Cutout Mask (Clipped to screenshot radius) */}
-                {settings.screenshotOpacity < 1 && (
+                {/* Layer 2: SVG Mask Dimming Overlay (Dimmable everywhere except cutout shapes) */}
+                {settings.screenshotOpacity < 1.0 && (
                   <svg
-                    id="focus-dimming-veil-svg"
-                    className="absolute inset-0 w-full h-full pointer-events-none block overflow-visible z-10"
-                    style={{ borderRadius: `${settings.screenshotRadius}px` }}
+                    id="focus-dimming-svg"
+                    className="absolute inset-0 w-full h-full pointer-events-none z-10"
                     viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
-                    preserveAspectRatio="none"
                   >
-                    {focus.enabled ? (
+                    {hasAnyFocusEnabled ? (
                       <>
                         <defs>
-                          <mask
-                            id="focus-cutout-mask"
-                            maskUnits="userSpaceOnUse"
-                            x="-100"
-                            y="-100"
-                            width={(renderedDimensions.width || 204) + 200}
-                            height={(renderedDimensions.height || 450) + 200}
-                          >
-                            {/* White covers everywhere with the dimming veil */}
+                          <mask id="focus-cutout-mask">
+                            {/* White base = fully dimmed background */}
                             <rect
                               x="-100"
                               y="-100"
@@ -460,26 +484,45 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                               height={(renderedDimensions.height || 450) + 200}
                               fill="white"
                             />
-                            {/* Black cutout creates a 100% clear window over the exact focus area shape */}
-                            {focus.shape === 'circle' ? (
-                              <ellipse
-                                cx={exactFocusX + exactFocusW / 2}
-                                cy={exactFocusY + exactFocusH / 2}
-                                rx={Math.max(0.1, exactFocusW / 2)}
-                                ry={Math.max(0.1, exactFocusH / 2)}
-                                fill="black"
-                              />
-                            ) : (
-                              <rect
-                                x={exactFocusX}
-                                y={exactFocusY}
-                                width={Math.max(0.1, exactFocusW)}
-                                height={Math.max(0.1, exactFocusH)}
-                                rx={exactRadius}
-                                ry={exactRadius}
-                                fill="black"
-                              />
-                            )}
+                            {/* Black cutout shapes for ALL active focus zones */}
+                            {allFocuses.map((f, idx) => {
+                              if (!f.enabled) return null;
+                              const fExactX = (f.x / 100) * curScreenW;
+                              const fExactY = (f.y / 100) * curScreenH;
+                              const fExactW = (f.width / 100) * curScreenW;
+                              const fExactH = (f.height / 100) * curScreenH;
+
+                              let fRadius = 0;
+                              if (f.shape === 'pill' || f.shape === 'circle') {
+                                fRadius = Math.min(fExactW, fExactH) / 2;
+                              } else if (f.shape === 'rectangle') {
+                                fRadius = 0;
+                              } else {
+                                fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                              }
+
+                              return f.shape === 'circle' ? (
+                                <ellipse
+                                  key={`cutout-${f.id || idx}`}
+                                  cx={fExactX + fExactW / 2}
+                                  cy={fExactY + fExactH / 2}
+                                  rx={Math.max(0.1, fExactW / 2)}
+                                  ry={Math.max(0.1, fExactH / 2)}
+                                  fill="black"
+                                />
+                              ) : (
+                                <rect
+                                  key={`cutout-${f.id || idx}`}
+                                  x={fExactX}
+                                  y={fExactY}
+                                  width={Math.max(0.1, fExactW)}
+                                  height={Math.max(0.1, fExactH)}
+                                  rx={fRadius}
+                                  ry={fRadius}
+                                  fill="black"
+                                />
+                              );
+                            })}
                           </mask>
                         </defs>
                         <rect
@@ -506,43 +549,60 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 )}
               </div>
 
-              {/* Layer 3: Focus Contour Border (Placed outside overflow-hidden so it can overflow/bleed beyond screenshot edges freely) */}
-              {focus.enabled && focus.showBorder && (
-                <svg
-                  id="focus-contour-border-svg"
-                  className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
-                  viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
-                >
-                  {focus.shape === 'circle' ? (
+              {/* Layer 3: Focus Contour Borders for ALL enabled zones with showBorder */}
+              <svg
+                id="focus-contour-border-svg"
+                className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
+                viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
+              >
+                {allFocuses.map((f, idx) => {
+                  if (!f.enabled || !f.showBorder) return null;
+                  const fExactX = (f.x / 100) * curScreenW;
+                  const fExactY = (f.y / 100) * curScreenH;
+                  const fExactW = (f.width / 100) * curScreenW;
+                  const fExactH = (f.height / 100) * curScreenH;
+
+                  let fRadius = 0;
+                  if (f.shape === 'pill' || f.shape === 'circle') {
+                    fRadius = Math.min(fExactW, fExactH) / 2;
+                  } else if (f.shape === 'rectangle') {
+                    fRadius = 0;
+                  } else {
+                    fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                  }
+
+                  return f.shape === 'circle' ? (
                     <ellipse
-                      cx={exactFocusX + exactFocusW / 2}
-                      cy={exactFocusY + exactFocusH / 2}
-                      rx={Math.max(0.1, exactFocusW / 2)}
-                      ry={Math.max(0.1, exactFocusH / 2)}
+                      key={`contour-border-${f.id || idx}`}
+                      cx={fExactX + fExactW / 2}
+                      cy={fExactY + fExactH / 2}
+                      rx={Math.max(0.1, fExactW / 2)}
+                      ry={Math.max(0.1, fExactH / 2)}
                       fill="none"
-                      stroke={focus.borderColor || '#cc0000'}
-                      strokeWidth={focus.borderWidth || 2}
-                      strokeDasharray={focus.borderStyle === 'dashed' ? '4 4' : undefined}
+                      stroke={f.borderColor || '#cc0000'}
+                      strokeWidth={f.borderWidth || 2}
+                      strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
                     />
                   ) : (
                     <rect
-                      x={exactFocusX}
-                      y={exactFocusY}
-                      width={Math.max(0.1, exactFocusW)}
-                      height={Math.max(0.1, exactFocusH)}
-                      rx={exactRadius}
-                      ry={exactRadius}
+                      key={`contour-border-${f.id || idx}`}
+                      x={fExactX}
+                      y={fExactY}
+                      width={Math.max(0.1, fExactW)}
+                      height={Math.max(0.1, fExactH)}
+                      rx={fRadius}
+                      ry={fRadius}
                       fill="none"
-                      stroke={focus.borderColor || '#cc0000'}
-                      strokeWidth={focus.borderWidth || 2}
-                      strokeDasharray={focus.borderStyle === 'dashed' ? '4 4' : undefined}
+                      stroke={f.borderColor || '#cc0000'}
+                      strokeWidth={f.borderWidth || 2}
+                      strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
                     />
-                  )}
-                </svg>
-              )}
+                  );
+                })}
+              </svg>
 
-              {/* Visual Magnetic Guidelines (Shown when centered or snapped, subtle dashed line without text badges) */}
-              {!isExporting && focus.enabled && (
+              {/* Visual Magnetic Guidelines (Shown when centered or snapped for active focus) */}
+              {!isExporting && activeFocus.enabled && (
                 <>
                   {/* Horizontal Center Guide (Vertical axis line at X = 50%) */}
                   {isHorizontallyCentered && (
@@ -562,140 +622,161 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 </>
               )}
 
-              {/* Layer 3: Interactive Visual Focus Box (Hitbox and resize handles, perfectly aligned) */}
-              {focus.enabled && (
-                <div
-                  id="interactive-focus-box"
-                  className={`absolute z-20 group touch-none select-none box-border ${
-                    isDragging ? 'cursor-grabbing' : 'cursor-grab'
-                  }`}
-                  style={{
-                    left: `${focus.x}%`,
-                    top: `${focus.y}%`,
-                    width: `${focus.width}%`,
-                    height: `${focus.height}%`,
-                    borderRadius:
-                      focus.shape === 'pill'
-                        ? '9999px'
-                        : focus.shape === 'circle'
-                        ? '50%'
-                        : focus.shape === 'rectangle'
-                        ? '0px'
-                        : `${focus.radius}px`,
-                    border: !focus.showBorder && !isExporting ? '1px dashed rgba(204, 0, 0, 0.5)' : 'none',
-                    boxShadow: 'none',
-                  }}
-                  tabIndex={0}
-                  role="region"
-                  aria-label="Zone de focus interactive (utilisez les flèches du clavier pour déplacer)"
-                  onKeyDown={(e) => {
-                    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
-                      const stepXPct = (stepPx / curScreenW) * 100;
-                      const stepYPct = (stepPx / curScreenH) * 100;
+              {/* Interactive Visual Focus Boxes for ALL enabled zones */}
+              {allFocuses.map((f, idx) => {
+                if (!f.enabled) return null;
+                const isActive = idx === activeFocusIndex;
 
-                      let deltaX = 0;
-                      let deltaY = 0;
-                      if (e.key === 'ArrowLeft') deltaX = -stepXPct;
-                      if (e.key === 'ArrowRight') deltaX = stepXPct;
-                      if (e.key === 'ArrowUp') deltaY = -stepYPct;
-                      if (e.key === 'ArrowDown') deltaY = stepYPct;
+                return (
+                  <div
+                    key={`interactive-box-${f.id || idx}`}
+                    id={`interactive-focus-box-${idx}`}
+                    className={`absolute z-20 group touch-none select-none box-border ${
+                      isSpacePressed || isHandToolActive
+                        ? 'pointer-events-none'
+                        : isActive && isDragging
+                        ? 'cursor-grabbing'
+                        : 'cursor-grab'
+                    } ${
+                      !isActive && !isExporting
+                        ? 'hover:ring-1 hover:ring-blue-400/60'
+                        : ''
+                    }`}
+                    style={{
+                      left: `${f.x}%`,
+                      top: `${f.y}%`,
+                      width: `${f.width}%`,
+                      height: `${f.height}%`,
+                      borderRadius:
+                        f.shape === 'pill'
+                          ? '9999px'
+                          : f.shape === 'circle'
+                          ? '50%'
+                          : f.shape === 'rectangle'
+                          ? '0px'
+                          : `${f.radius}px`,
+                      border:
+                        !f.showBorder && !isExporting
+                          ? isActive
+                            ? '1px dashed rgba(204, 0, 0, 0.6)'
+                            : '1px dashed rgba(100, 116, 139, 0.4)'
+                          : 'none',
+                      boxShadow: 'none',
+                    }}
+                    tabIndex={0}
+                    role="region"
+                    aria-label={`Zone de focus ${f.name || idx + 1}`}
+                    onKeyDown={(e) => {
+                      if (
+                        isActive &&
+                        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+                      ) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                        const stepXPct = (stepPx / curScreenW) * 100;
+                        const stepYPct = (stepPx / curScreenH) * 100;
 
-                      onUpdateFocus({
-                        x: Math.round((focus.x + deltaX) * 1000) / 1000,
-                        y: Math.round((focus.y + deltaY) * 1000) / 1000,
-                      });
-                    }
-                  }}
-                  onPointerDown={(e) => handlePointerDown(e, 'move')}
-                >
-                  {/* Subtle Inner Crosshair / Center Lines (Discreet & thin, non-exporting) */}
-                  {!isExporting && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-[inherit]">
-                      {/* Horizontal center axis line */}
-                      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0 border-t border-dashed border-slate-500/40 opacity-70" />
-                      {/* Vertical center axis line */}
-                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0 border-l border-dashed border-slate-500/40 opacity-70" />
-                      {/* Center intersection dot */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-slate-600/60 shadow-2xs" />
-                    </div>
-                  )}
+                        let deltaX = 0;
+                        let deltaY = 0;
+                        if (e.key === 'ArrowLeft') deltaX = -stepXPct;
+                        if (e.key === 'ArrowRight') deltaX = stepXPct;
+                        if (e.key === 'ArrowUp') deltaY = -stepYPct;
+                        if (e.key === 'ArrowDown') deltaY = stepYPct;
 
-                  {/* Resize Handles (Corners & Edges, discreet square without contour) */}
-                  {!isExporting && focus.showHandles !== false && (
-                    <>
-                      {/* Corners */}
-                      <div
-                        id="handle-nw"
-                        title="Redimensionner coin haut gauche"
-                        className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'nw')}
-                      />
-                      <div
-                        id="handle-ne"
-                        title="Redimensionner coin haut droit"
-                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'ne')}
-                      />
-                      <div
-                        id="handle-sw"
-                        title="Redimensionner coin bas gauche"
-                        className="absolute -bottom-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'sw')}
-                      />
-                      <div
-                        id="handle-se"
-                        title="Redimensionner coin bas droit"
-                        className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'se')}
-                      />
+                        onUpdateFocus(
+                          {
+                            x: Math.round((f.x + deltaX) * 1000) / 1000,
+                            y: Math.round((f.y + deltaY) * 1000) / 1000,
+                          },
+                          idx
+                        );
+                      }
+                    }}
+                    onPointerDown={(e) => handlePointerDown(e, 'move', idx)}
+                  >
+                    {/* Subtle Inner Crosshair on active focus zone */}
+                    {!isExporting && isActive && (
+                      <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-[inherit]">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0 border-t border-dashed border-slate-500/40 opacity-70" />
+                        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0 border-l border-dashed border-slate-500/40 opacity-70" />
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-slate-600/60 shadow-2xs" />
+                      </div>
+                    )}
 
-                      {/* Edges */}
-                      <div
-                        id="handle-e"
-                        title="Étirer horizontalement"
-                        className="absolute top-1/2 -right-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'e')}
-                      />
-                      <div
-                        id="handle-w"
-                        title="Étirer horizontalement"
-                        className="absolute top-1/2 -left-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'w')}
-                      />
-                      <div
-                        id="handle-n"
-                        title="Étirer verticalement"
-                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 'n')}
-                      />
-                      <div
-                        id="handle-s"
-                        title="Étirer verticalement"
-                        className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
-                        onPointerDown={(e) => handlePointerDown(e, 's')}
-                      />
-                    </>
-                  )}
-                </div>
-              )}
+                    {/* Resize Handles (Only for active focus) */}
+                    {!isExporting && isActive && f.showHandles !== false && (
+                      <>
+                        {/* Corners */}
+                        <div
+                          id="handle-nw"
+                          title="Redimensionner coin haut gauche"
+                          className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'nw', idx)}
+                        />
+                        <div
+                          id="handle-ne"
+                          title="Redimensionner coin haut droit"
+                          className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'ne', idx)}
+                        />
+                        <div
+                          id="handle-sw"
+                          title="Redimensionner coin bas gauche"
+                          className="absolute -bottom-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'sw', idx)}
+                        />
+                        <div
+                          id="handle-se"
+                          title="Redimensionner coin bas droit"
+                          className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'se', idx)}
+                        />
+
+                        {/* Edges */}
+                        <div
+                          id="handle-e"
+                          title="Étirer horizontalement"
+                          className="absolute top-1/2 -right-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'e', idx)}
+                        />
+                        <div
+                          id="handle-w"
+                          title="Étirer horizontalement"
+                          className="absolute top-1/2 -left-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'w', idx)}
+                        />
+                        <div
+                          id="handle-n"
+                          title="Étirer verticalement"
+                          className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 'n', idx)}
+                        />
+                        <div
+                          id="handle-s"
+                          title="Étirer verticalement"
+                          className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
+                          onPointerDown={(e) => handlePointerDown(e, 's', idx)}
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Info indicator under 240px preview matching theme */}
+      {/* Info indicator under preview matching theme */}
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-slate-400">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
         <span>
           Screen : <strong className="font-mono text-slate-600 font-semibold">{curScreenW} px × {curScreenH} px</strong>
-          {' | '}Focus : <strong className="font-mono text-emerald-600 font-semibold">{focusWPx} px × {focusHPx} px</strong>
-          {' | '}Format cible : <strong className="font-mono text-indigo-600 font-semibold">{settings.exportFormat === 'max_250x450' ? 'Max 250×450 px' : settings.exportFormat === 'height_490' ? 'H 490 px' : settings.exportFormat === 'height_800' ? 'H 800 px' : settings.exportFormat === 'height_1080' ? 'H 1080 px' : settings.exportFormat === 'custom' ? `H ${settings.exportCustomHeight} px` : 'Auto'}</strong>
+          {' | '}Focus ({activeFocus.name || `Zone ${activeFocusIndex + 1}`}) : <strong className="font-mono text-emerald-600 font-semibold">{activeFocusWPx} px × {activeFocusHPx} px</strong>
+          {' | '}Zones : <strong className="font-mono text-blue-600 font-semibold">{allFocuses.filter(f => f.enabled).length}/{allFocuses.length} active(s)</strong>
         </span>
       </div>
     </div>
   );
 };
-
