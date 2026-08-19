@@ -33,6 +33,7 @@ import {
   FolderOpen,
   ChevronDown,
 } from 'lucide-react';
+import { PreciseNumberInput } from './PreciseNumberInput';
 
 interface ControlPanelProps {
   settings: FrameSettings;
@@ -82,11 +83,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const screenW = screenDimensions.width || 204;
   const screenH = screenDimensions.height || 450;
 
-  // Convert percentage state to pixels for display
-  const focusXPx = Math.round((focus.x / 100) * screenW);
-  const focusYPx = Math.round((focus.y / 100) * screenH);
-  const focusWPx = Math.round((focus.width / 100) * screenW);
-  const focusHPx = Math.round((focus.height / 100) * screenH);
+  // Convert percentage state to pixels for display (supports decimals e.g. 20.5)
+  const focusXPx = Math.round(((focus.x / 100) * screenW) * 10) / 10;
+  const focusYPx = Math.round(((focus.y / 100) * screenH) * 10) / 10;
+  const focusWPx = Math.round(((focus.width / 100) * screenW) * 10) / 10;
+  const focusHPx = Math.round(((focus.height / 100) * screenH) * 10) / 10;
 
   const handleCenterHorizontal = () => {
     onUpdateFocus({
@@ -742,15 +743,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     id="shape-btn-pill-v"
                     onClick={() => {
                       const pillWidthPct = (35 / screenW) * 100;
-                      const pillHeightPct = (220 / screenH) * 100;
+                      const pillHeightPct = (128 / screenH) * 100;
                       const pillXPct = ((screenW - 35) / 2 / screenW) * 100;
+                      const pillYPct = ((screenH - 128) / 2 / screenH) * 100;
                       onUpdateFocus({
                         shape: 'pill',
                         radius: 999,
                         width: Math.round(pillWidthPct * 10) / 10,
                         height: Math.round(pillHeightPct * 10) / 10,
                         x: Math.round(pillXPct * 10) / 10,
-                        y: 25,
+                        y: Math.round(pillYPct * 10) / 10,
                         margin: 5,
                       });
                     }}
@@ -765,7 +767,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         ? 'border-white bg-white/30'
                         : 'border-slate-500 bg-slate-100'
                     }`} />
-                    <span className="text-[10px] leading-tight">Pilule V (35px)</span>
+                    <span className="text-[10px] leading-tight">Pilule V (35×128)</span>
                   </button>
 
                   {/* Pilule Horizontale */}
@@ -773,7 +775,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="button"
                     id="shape-btn-pill-h"
                     onClick={() => {
-                      const pillHeightPct = (48 / screenH) * 100;
+                      const pillHeightPct = (35 / screenH) * 100;
                       const pillWidthPct = ((screenW + 10) / screenW) * 100;
                       const pillXPct = (-5 / screenW) * 100;
                       onUpdateFocus({
@@ -797,10 +799,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         ? 'border-white bg-white/30'
                         : 'border-slate-500 bg-slate-100'
                     }`} />
-                    <span className="text-[10px] leading-tight">Pilule H</span>
+                    <span className="text-[10px] leading-tight">Pilule H (35px)</span>
                   </button>
 
-                  {/* Rond / Cercle */}
+                  {/* Rond / Cercle (55px x 55px) */}
                   <button
                     type="button"
                     id="shape-btn-circle"
@@ -808,12 +810,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       const circleSizeWPct = (55 / screenW) * 100;
                       const circleSizeHPct = (55 / screenH) * 100;
                       const currentCenterX = focus.x + focus.width / 2;
+                      const currentCenterY = focus.y + focus.height / 2;
                       const newX = currentCenterX - circleSizeWPct / 2;
+                      const newY = currentCenterY - circleSizeHPct / 2;
                       onUpdateFocus({
                         shape: 'circle',
                         width: Math.round(circleSizeWPct * 10) / 10,
                         height: Math.round(circleSizeHPct * 10) / 10,
                         x: Math.round(newX * 10) / 10,
+                        y: Math.round(newY * 10) / 10,
                         margin: 0,
                       });
                     }}
@@ -824,7 +829,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     }`}
                   >
                     <div className={`w-3.5 h-3.5 rounded-full border ${focus.shape === 'circle' ? 'border-white bg-white/30' : 'border-slate-500 bg-slate-100'}`} />
-                    <span className="text-[10px] leading-tight">Rond</span>
+                    <span className="text-[10px] leading-tight">Rond (55px)</span>
                   </button>
                 </div>
               </div>
@@ -854,23 +859,45 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </label>
               </div>
 
+              {/* Afficher / Masquer les poignées switch */}
+              <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-lg border border-black/10">
+                <div className="flex items-center gap-2">
+                  <Maximize2 className={`w-3.5 h-3.5 ${focus.showHandles !== false ? 'text-slate-900' : 'text-slate-400'}`} />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 block">
+                      Poignées de redimensionnement
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      Afficher les petits carrés de manipulation sur la forme
+                    </span>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    id="toggle-show-handles"
+                    type="checkbox"
+                    checked={focus.showHandles !== false}
+                    onChange={(e) => onUpdateFocus({ showHandles: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-slate-900 shadow-inner"></div>
+                </label>
+              </div>
+
               {/* Manual numeric inputs & Sliders for Position X and Position Y */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider">
                     <span className="font-semibold">Position X</span>
                     <div className="flex items-center gap-0.5">
-                      <input
+                      <PreciseNumberInput
                         id="input-focus-x"
-                        type="number"
-                        min={unit === 'px' ? -300 : -200}
-                        max={unit === 'px' ? 600 : 300}
-                        step="1"
-                        value={unit === 'px' ? focusXPx : Math.round(focus.x)}
-                        onChange={(e) => {
-                          const num = Number(e.target.value) || 0;
+                        min={unit === 'px' ? -400 : -200}
+                        max={unit === 'px' ? 800 : 300}
+                        value={unit === 'px' ? focusXPx : focus.x}
+                        onChange={(num) => {
                           const newXPct = unit === 'px' ? (num / screenW) * 100 : num;
-                          onUpdateFocus({ x: Math.round(newXPct * 10) / 10 });
+                          onUpdateFocus({ x: Math.round(newXPct * 1000) / 1000 });
                         }}
                         className="w-16 h-6 px-1 text-center font-mono font-semibold text-xs macos-input"
                       />
@@ -882,12 +909,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="range"
                     min={unit === 'px' ? Math.round(-screenW * 0.4) : -50}
                     max={unit === 'px' ? Math.round(screenW * 1.3) : 150}
-                    step="1"
-                    value={unit === 'px' ? focusXPx : Math.round(focus.x)}
+                    step="0.5"
+                    value={unit === 'px' ? focusXPx : focus.x}
                     onChange={(e) => {
                       const num = Number(e.target.value);
                       const newXPct = unit === 'px' ? (num / screenW) * 100 : num;
-                      onUpdateFocus({ x: Math.round(newXPct * 10) / 10 });
+                      onUpdateFocus({ x: Math.round(newXPct * 1000) / 1000 });
                     }}
                     className="macos-slider"
                   />
@@ -901,17 +928,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider">
                     <span className="font-semibold">Position Y</span>
                     <div className="flex items-center gap-0.5">
-                      <input
+                      <PreciseNumberInput
                         id="input-focus-y"
-                        type="number"
-                        min={unit === 'px' ? -300 : -200}
-                        max={unit === 'px' ? 800 : 300}
-                        step="1"
-                        value={unit === 'px' ? focusYPx : Math.round(focus.y)}
-                        onChange={(e) => {
-                          const num = Number(e.target.value) || 0;
+                        min={unit === 'px' ? -400 : -200}
+                        max={unit === 'px' ? 1200 : 300}
+                        value={unit === 'px' ? focusYPx : focus.y}
+                        onChange={(num) => {
                           const newYPct = unit === 'px' ? (num / screenH) * 100 : num;
-                          onUpdateFocus({ y: Math.round(newYPct * 10) / 10 });
+                          onUpdateFocus({ y: Math.round(newYPct * 1000) / 1000 });
                         }}
                         className="w-16 h-6 px-1 text-center font-mono font-semibold text-xs macos-input"
                       />
@@ -923,12 +947,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="range"
                     min={unit === 'px' ? Math.round(-screenH * 0.4) : -50}
                     max={unit === 'px' ? Math.round(screenH * 1.3) : 150}
-                    step="1"
-                    value={unit === 'px' ? focusYPx : Math.round(focus.y)}
+                    step="0.5"
+                    value={unit === 'px' ? focusYPx : focus.y}
                     onChange={(e) => {
                       const num = Number(e.target.value);
                       const newYPct = unit === 'px' ? (num / screenH) * 100 : num;
-                      onUpdateFocus({ y: Math.round(newYPct * 10) / 10 });
+                      onUpdateFocus({ y: Math.round(newYPct * 1000) / 1000 });
                     }}
                     className="macos-slider"
                   />
@@ -945,22 +969,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider">
                     <span className="font-semibold">Largeur (W)</span>
                     <div className="flex items-center gap-0.5">
-                      <input
+                      <PreciseNumberInput
                         id="input-focus-width"
-                        type="number"
-                        min="1"
+                        min={0.1}
                         max={unit === 'px' ? 1200 : 500}
-                        step="1"
-                        value={unit === 'px' ? focusWPx : Math.round(focus.width)}
-                        onChange={(e) => {
-                          const num = Math.max(1, Number(e.target.value) || 1);
+                        value={unit === 'px' ? focusWPx : focus.width}
+                        onChange={(num) => {
                           const newWPct = unit === 'px' ? (num / screenW) * 100 : num;
                           const currentCenterX = focus.x + focus.width / 2;
-                          const clampedW = Math.max(1, newWPct);
+                          const clampedW = Math.max(0.1, newWPct);
                           const newX = currentCenterX - clampedW / 2;
                           onUpdateFocus({
-                            width: Math.round(clampedW * 10) / 10,
-                            x: Math.round(newX * 10) / 10,
+                            width: Math.round(clampedW * 1000) / 1000,
+                            x: Math.round(newX * 1000) / 1000,
                           });
                         }}
                         className="w-16 h-6 px-1 text-center font-mono font-semibold text-xs macos-input"
@@ -973,17 +994,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="range"
                     min="1"
                     max={unit === 'px' ? Math.round(screenW * 1.8) : 200}
-                    step="1"
-                    value={unit === 'px' ? focusWPx : Math.round(focus.width)}
+                    step="0.5"
+                    value={unit === 'px' ? focusWPx : focus.width}
                     onChange={(e) => {
                       const num = Number(e.target.value);
                       const newWPct = unit === 'px' ? (num / screenW) * 100 : num;
                       const currentCenterX = focus.x + focus.width / 2;
-                      const clampedW = Math.max(1, newWPct);
+                      const clampedW = Math.max(0.1, newWPct);
                       const newX = currentCenterX - clampedW / 2;
                       onUpdateFocus({
-                        width: Math.round(clampedW * 10) / 10,
-                        x: Math.round(newX * 10) / 10,
+                        width: Math.round(clampedW * 1000) / 1000,
+                        x: Math.round(newX * 1000) / 1000,
                       });
                     }}
                     className="macos-slider"
@@ -998,17 +1019,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider">
                     <span className="font-semibold">Hauteur (H)</span>
                     <div className="flex items-center gap-0.5">
-                      <input
+                      <PreciseNumberInput
                         id="input-focus-height"
-                        type="number"
-                        min="1"
+                        min={0.1}
                         max={unit === 'px' ? 1500 : 500}
-                        step="1"
-                        value={unit === 'px' ? focusHPx : Math.round(focus.height)}
-                        onChange={(e) => {
-                          const num = Math.max(1, Number(e.target.value) || 1);
+                        value={unit === 'px' ? focusHPx : focus.height}
+                        onChange={(num) => {
                           const newHPct = unit === 'px' ? (num / screenH) * 100 : num;
-                          onUpdateFocus({ height: Math.max(1, Math.round(newHPct * 10) / 10) });
+                          const currentCenterY = focus.y + focus.height / 2;
+                          const clampedH = Math.max(0.1, newHPct);
+                          const newY = currentCenterY - clampedH / 2;
+                          onUpdateFocus({
+                            height: Math.round(clampedH * 1000) / 1000,
+                            y: Math.round(newY * 1000) / 1000,
+                          });
                         }}
                         className="w-16 h-6 px-1 text-center font-mono font-semibold text-xs macos-input"
                       />
@@ -1020,12 +1044,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="range"
                     min="1"
                     max={unit === 'px' ? Math.round(screenH * 1.8) : 200}
-                    step="1"
-                    value={unit === 'px' ? focusHPx : Math.round(focus.height)}
+                    step="0.5"
+                    value={unit === 'px' ? focusHPx : focus.height}
                     onChange={(e) => {
                       const num = Number(e.target.value);
                       const newHPct = unit === 'px' ? (num / screenH) * 100 : num;
-                      onUpdateFocus({ height: Math.max(1, Math.round(newHPct * 10) / 10) });
+                      const currentCenterY = focus.y + focus.height / 2;
+                      const clampedH = Math.max(0.1, newHPct);
+                      const newY = currentCenterY - clampedH / 2;
+                      onUpdateFocus({
+                        height: Math.round(clampedH * 1000) / 1000,
+                        y: Math.round(newY * 1000) / 1000,
+                      });
                     }}
                     className="macos-slider"
                   />
@@ -1074,18 +1104,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
                       <span>Marge de débordement ({focus.width > focus.height ? 'Pilule H' : 'Pilule V'})</span>
                       <div className="flex items-center gap-1">
-                        <input
+                        <PreciseNumberInput
                           id="input-focus-margin-cote"
-                          type="number"
-                          min="0"
-                          max="60"
-                          step="1"
+                          min={0}
+                          max={60}
                           value={focus.margin ?? 5}
-                          onChange={(e) => {
-                            const newMargin = Math.max(0, Number(e.target.value) || 0);
+                          onChange={(newMargin) => {
                             const isHoriz = focus.width > focus.height;
                             if (isHoriz) {
-                              const baseH = 48;
+                              const baseH = 35;
                               const baseW = screenW + 10;
                               const newHPx = baseH + newMargin * 2;
                               const newWPx = baseW + newMargin * 2;
@@ -1095,16 +1122,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                               const currentCenterY = focus.y + focus.height / 2;
                               const newYPct = currentCenterY - newHPct / 2;
                               onUpdateFocus({
-                                x: Math.round(newXPct * 10) / 10,
-                                y: Math.max(0, Math.round(newYPct * 10) / 10),
-                                width: Math.round(newWPct * 10) / 10,
-                                height: Math.round(newHPct * 10) / 10,
+                                x: Math.round(newXPct * 1000) / 1000,
+                                y: Math.max(0, Math.round(newYPct * 1000) / 1000),
+                                width: Math.round(newWPct * 1000) / 1000,
+                                height: Math.round(newHPct * 1000) / 1000,
                                 margin: newMargin,
                                 radius: 999,
                               });
                             } else {
                               const baseW = 35;
-                              const baseH = 220;
+                              const baseH = 128;
                               const newWPx = baseW + newMargin * 2;
                               const newHPx = baseH + newMargin * 2;
                               const newWPct = (newWPx / screenW) * 100;
@@ -1113,10 +1140,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                               const currentCenterY = focus.y + focus.height / 2;
                               const newYPct = currentCenterY - newHPct / 2;
                               onUpdateFocus({
-                                x: Math.round(newXPct * 10) / 10,
-                                y: Math.max(0, Math.round(newYPct * 10) / 10),
-                                width: Math.round(newWPct * 10) / 10,
-                                height: Math.round(newHPct * 10) / 10,
+                                x: Math.round(newXPct * 1000) / 1000,
+                                y: Math.max(0, Math.round(newYPct * 1000) / 1000),
+                                width: Math.round(newWPct * 1000) / 1000,
+                                height: Math.round(newHPct * 1000) / 1000,
                                 margin: newMargin,
                                 radius: 999,
                               });
@@ -1141,7 +1168,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                           onClick={() => {
                             const isHoriz = focus.width > focus.height;
                             if (isHoriz) {
-                              const baseH = 48;
+                              const baseH = 35;
                               const baseW = screenW + 10;
                               const newHPx = baseH + item.val * 2;
                               const newWPx = baseW + item.val * 2;
@@ -1160,7 +1187,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                               });
                             } else {
                               const baseW = 35;
-                              const baseH = 220;
+                              const baseH = 128;
                               const newWPx = baseW + item.val * 2;
                               const newHPx = baseH + item.val * 2;
                               const newWPct = (newWPx / screenW) * 100;

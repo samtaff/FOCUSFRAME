@@ -185,38 +185,49 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           width: Math.max(2, Math.round(newW * 10) / 10),
         });
       } else if (dragAction === 's') {
-        // Bottom edge handle
-        let newH = startFocus.height + deltaYPercent;
-        if (snapEnabled && Math.abs(newH - 100) < snapTolYPct) {
+        // Bottom edge handle: expands/contracts symmetrically from center
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newH = Math.max(2, startFocus.height + deltaYPercent * 2);
+        if (snapEnabled && Math.abs(newH - 100) < snapTolYPct * 2) {
           newH = 100;
         }
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
+          y: Math.round(newY * 10) / 10,
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
       } else if (dragAction === 'n') {
-        // Top edge handle
-        let newY = startFocus.y + deltaYPercent;
-        let newH = startFocus.height - deltaYPercent;
-        if (snapEnabled && Math.abs(newY - 0) < snapTolYPct) {
-          newH = newH + newY;
-          newY = 0;
+        // Top edge handle: expands/contracts symmetrically from center
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newH = Math.max(2, startFocus.height - deltaYPercent * 2);
+        if (snapEnabled && Math.abs(newH - 100) < snapTolYPct * 2) {
+          newH = 100;
         }
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
           y: Math.round(newY * 10) / 10,
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
       } else if (dragAction === 'se') {
-        let newW = startFocus.width + deltaXPercent;
-        let newH = startFocus.height + deltaYPercent;
+        const startCenterX = startFocus.x + startFocus.width / 2;
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newW = Math.max(2, startFocus.width + deltaXPercent * 2);
+        let newH = Math.max(2, startFocus.height + deltaYPercent * 2);
+        const newX = startCenterX - newW / 2;
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
+          x: Math.round(newX * 10) / 10,
+          y: Math.round(newY * 10) / 10,
           width: Math.max(2, Math.round(newW * 10) / 10),
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
       } else if (dragAction === 'nw') {
-        let newX = startFocus.x + deltaXPercent;
-        let newY = startFocus.y + deltaYPercent;
-        let newW = startFocus.width - deltaXPercent;
-        let newH = startFocus.height - deltaYPercent;
+        const startCenterX = startFocus.x + startFocus.width / 2;
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newW = Math.max(2, startFocus.width - deltaXPercent * 2);
+        let newH = Math.max(2, startFocus.height - deltaYPercent * 2);
+        const newX = startCenterX - newW / 2;
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
           x: Math.round(newX * 10) / 10,
           y: Math.round(newY * 10) / 10,
@@ -224,20 +235,28 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
       } else if (dragAction === 'ne') {
-        let newY = startFocus.y + deltaYPercent;
-        let newW = startFocus.width + deltaXPercent;
-        let newH = startFocus.height - deltaYPercent;
+        const startCenterX = startFocus.x + startFocus.width / 2;
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newW = Math.max(2, startFocus.width + deltaXPercent * 2);
+        let newH = Math.max(2, startFocus.height - deltaYPercent * 2);
+        const newX = startCenterX - newW / 2;
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
+          x: Math.round(newX * 10) / 10,
           y: Math.round(newY * 10) / 10,
           width: Math.max(2, Math.round(newW * 10) / 10),
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
       } else if (dragAction === 'sw') {
-        let newX = startFocus.x + deltaXPercent;
-        let newW = startFocus.width - deltaXPercent;
-        let newH = startFocus.height + deltaYPercent;
+        const startCenterX = startFocus.x + startFocus.width / 2;
+        const startCenterY = startFocus.y + startFocus.height / 2;
+        let newW = Math.max(2, startFocus.width - deltaXPercent * 2);
+        let newH = Math.max(2, startFocus.height + deltaYPercent * 2);
+        const newX = startCenterX - newW / 2;
+        const newY = startCenterY - newH / 2;
         onUpdateFocus({
           x: Math.round(newX * 10) / 10,
+          y: Math.round(newY * 10) / 10,
           width: Math.max(2, Math.round(newW * 10) / 10),
           height: Math.max(2, Math.round(newH * 10) / 10),
         });
@@ -333,12 +352,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         {/* Outer constraint wrapper: strictly max 240px wide with transparent checkboard preview */}
         <div
           id="preview-constraint-wrapper"
-          className={`relative flex justify-center items-center select-none rounded-xl ${
-            showRulers && !isExporting ? 'pl-[16px] pt-[16px]' : 'p-0.5'
-          } ${
+          className={`relative flex justify-center items-center select-none rounded-xl p-0.5 ${
             settings.bgType === 'transparent' ? 'bg-checkerboard shadow-inner' : ''
           }`}
-          style={{ maxWidth: showRulers && !isExporting ? '256px' : '240px' }}
+          style={{ maxWidth: '240px' }}
         >
           {/* Ruler overlay on canvas */}
           {showRulers && !isExporting && (
@@ -568,6 +585,30 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     border: !focus.showBorder && !isExporting ? '1px dashed rgba(204, 0, 0, 0.5)' : 'none',
                     boxShadow: 'none',
                   }}
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Zone de focus interactive (utilisez les flèches du clavier pour déplacer)"
+                  onKeyDown={(e) => {
+                    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                      const stepXPct = (stepPx / curScreenW) * 100;
+                      const stepYPct = (stepPx / curScreenH) * 100;
+
+                      let deltaX = 0;
+                      let deltaY = 0;
+                      if (e.key === 'ArrowLeft') deltaX = -stepXPct;
+                      if (e.key === 'ArrowRight') deltaX = stepXPct;
+                      if (e.key === 'ArrowUp') deltaY = -stepYPct;
+                      if (e.key === 'ArrowDown') deltaY = stepYPct;
+
+                      onUpdateFocus({
+                        x: Math.round((focus.x + deltaX) * 1000) / 1000,
+                        y: Math.round((focus.y + deltaY) * 1000) / 1000,
+                      });
+                    }
+                  }}
                   onPointerDown={(e) => handlePointerDown(e, 'move')}
                 >
                   {/* Subtle Inner Crosshair / Center Lines (Discreet & thin, non-exporting) */}
@@ -582,58 +623,58 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     </div>
                   )}
 
-                  {/* Resize Handles (Corners & Edges, discreet & sleek, hidden during clean export) */}
-                  {!isExporting && (
+                  {/* Resize Handles (Corners & Edges, discreet square without contour) */}
+                  {!isExporting && focus.showHandles !== false && (
                     <>
                       {/* Corners */}
                       <div
                         id="handle-nw"
                         title="Redimensionner coin haut gauche"
-                        className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-nwse-resize z-30 opacity-70 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'nw')}
                       />
                       <div
                         id="handle-ne"
                         title="Redimensionner coin haut droit"
-                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-nesw-resize z-30 opacity-70 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'ne')}
                       />
                       <div
                         id="handle-sw"
                         title="Redimensionner coin bas gauche"
-                        className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-nesw-resize z-30 opacity-70 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        className="absolute -bottom-0.5 -left-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nesw-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'sw')}
                       />
                       <div
                         id="handle-se"
                         title="Redimensionner coin bas droit"
-                        className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-nwse-resize z-30 opacity-70 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-nwse-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'se')}
                       />
 
                       {/* Edges */}
                       <div
                         id="handle-e"
-                        title="Étirer vers la droite"
-                        className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-2 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-ew-resize z-30 opacity-60 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        title="Étirer horizontalement"
+                        className="absolute top-1/2 -right-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'e')}
                       />
                       <div
                         id="handle-w"
-                        title="Étirer vers la gauche"
-                        className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-ew-resize z-30 opacity-60 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        title="Étirer horizontalement"
+                        className="absolute top-1/2 -left-0.5 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ew-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'w')}
                       />
                       <div
                         id="handle-n"
-                        title="Étirer vers le haut"
-                        className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-ns-resize z-30 opacity-60 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        title="Étirer verticalement"
+                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 'n')}
                       />
                       <div
                         id="handle-s"
-                        title="Étirer vers le bas"
-                        className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white border border-emerald-600 rounded-full shadow-2xs cursor-ns-resize z-30 opacity-60 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-all touch-none after:content-[''] after:absolute after:-inset-1.5"
+                        title="Étirer verticalement"
+                        className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-none shadow-xs cursor-ns-resize z-30 opacity-80 group-hover:opacity-100 hover:!opacity-100 hover:scale-125 transition-transform touch-none after:content-[''] after:absolute after:-inset-2"
                         onPointerDown={(e) => handlePointerDown(e, 's')}
                       />
                     </>

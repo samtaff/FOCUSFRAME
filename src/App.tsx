@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { PreviewCanvas } from './components/PreviewCanvas';
 import { ControlPanel } from './components/ControlPanel';
+import { PhotoshopToolbar } from './components/PhotoshopToolbar';
 import { FrameSettings, FocusRect, GuideLine } from './types';
 import { SAMPLE_IMAGES, GRADIENT_PRESETS } from './presets';
 import { toPng, toBlob } from 'html-to-image';
@@ -617,17 +618,7 @@ export default function App() {
             <div className="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center text-white shadow-xs">
               <Focus className="w-3.5 h-3.5" />
             </div>
-            <span className="text-sm font-semibold tracking-tight text-slate-900">FocusFrame</span>
-            <span className="text-[11px] px-2.5 py-0.5 bg-black/[0.04] border border-black/[0.06] text-slate-700 rounded-md font-medium">
-              240px Studio
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 bg-white/60 backdrop-blur-xl border border-black/[0.06] px-3.5 py-1 rounded-full shadow-2xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-medium">Prévisualisation max 240px</span>
+            <span className="text-sm font-bold tracking-wider text-slate-900 uppercase">FOCUSFRAME</span>
           </div>
         </div>
       </header>
@@ -771,6 +762,16 @@ export default function App() {
             ref={stageContainerRef}
             className="w-full flex-1 flex flex-col items-center justify-center py-8 relative overflow-auto min-h-[580px] xl:min-h-[680px]"
           >
+            {/* Photoshop-style Vertical Shape Toolbar in LiquidGlass (Draggable) */}
+            <PhotoshopToolbar
+              focus={settings.focus}
+              onUpdateFocus={handleUpdateFocus}
+              screenW={screenDimensions.width}
+              screenH={screenDimensions.height}
+              containerRef={stageContainerRef}
+              onSaveAs={() => handleExportPng(true)}
+            />
+
             {/* Container for the 240px constrained card (macOS Frosted Tile) */}
             <div
               className={`relative z-10 w-full flex flex-col items-center justify-center p-8 sm:p-10 lg:p-12 macos-card bg-canvas-dots transition-all duration-150 min-h-[540px] xl:min-h-[620px] ${

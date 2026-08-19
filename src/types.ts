@@ -30,6 +30,7 @@ export interface FocusRect {
   borderStyle: BorderStyle;
   snapEnabled?: boolean;
   lockSignature?: boolean;
+  showHandles?: boolean;
 }
 
 export type ExportFormatPreset = 'height_450' | 'custom';
