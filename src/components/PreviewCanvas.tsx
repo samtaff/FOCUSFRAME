@@ -274,13 +274,30 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     ? `inset(${clipInsetTop}% ${clipInsetRight}% ${clipInsetBottom}% ${clipInsetLeft}% round ${focus.radius}px)`
     : 'none';
 
-  // Pixel conversion for display and guidelines
+  // Exact pixel conversion for display and guidelines
   const curScreenW = renderedDimensions.width || 204;
   const curScreenH = renderedDimensions.height || 450;
   const focusXPx = Math.round((focus.x / 100) * curScreenW);
   const focusYPx = Math.round((focus.y / 100) * curScreenH);
   const focusWPx = Math.round((focus.width / 100) * curScreenW);
   const focusHPx = Math.round((focus.height / 100) * curScreenH);
+
+  // Exact floating point coordinates for 0-offset SVG mask cutout and contour border stroke
+  const exactFocusX = (focus.x / 100) * curScreenW;
+  const exactFocusY = (focus.y / 100) * curScreenH;
+  const exactFocusW = (focus.width / 100) * curScreenW;
+  const exactFocusH = (focus.height / 100) * curScreenH;
+
+  let exactRadius = 0;
+  if (focus.shape === 'pill') {
+    exactRadius = Math.min(exactFocusW, exactFocusH) / 2;
+  } else if (focus.shape === 'rectangle') {
+    exactRadius = 0;
+  } else if (focus.shape === 'circle') {
+    exactRadius = Math.min(exactFocusW, exactFocusH) / 2;
+  } else {
+    exactRadius = Math.min(focus.radius, exactFocusW / 2, exactFocusH / 2);
+  }
 
   // Check centering alignments
   const isHorizontallyCentered = Math.abs((focus.x + focus.width / 2) - 50) < 0.6 || isSnappedX;
@@ -398,11 +415,11 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   crossOrigin="anonymous"
                 />
 
-                {/* Layer 2: Seamless Dimming Veil with Cutout Mask over Focus Zone (Zero seam, zero double-layer artifacts) */}
+                {/* Layer 2: Seamless Dimming Veil with Cutout Mask (Clipped to screenshot radius) */}
                 {settings.screenshotOpacity < 1 && (
                   <svg
                     id="focus-dimming-veil-svg"
-                    className="absolute inset-0 w-full h-full pointer-events-none block overflow-visible"
+                    className="absolute inset-0 w-full h-full pointer-events-none block overflow-visible z-10"
                     style={{ borderRadius: `${settings.screenshotRadius}px` }}
                     viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
                     preserveAspectRatio="none"
@@ -413,58 +430,46 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                           <mask
                             id="focus-cutout-mask"
                             maskUnits="userSpaceOnUse"
-                            x="-30"
-                            y="-30"
-                            width={(renderedDimensions.width || 204) + 60}
-                            height={(renderedDimensions.height || 450) + 60}
+                            x="-100"
+                            y="-100"
+                            width={(renderedDimensions.width || 204) + 200}
+                            height={(renderedDimensions.height || 450) + 200}
                           >
-                            {/* White covers everywhere with the dimming veil, with bleed to prevent any subpixel border gap */}
+                            {/* White covers everywhere with the dimming veil */}
                             <rect
-                              x="-30"
-                              y="-30"
-                              width={(renderedDimensions.width || 204) + 60}
-                              height={(renderedDimensions.height || 450) + 60}
+                              x="-100"
+                              y="-100"
+                              width={(renderedDimensions.width || 204) + 200}
+                              height={(renderedDimensions.height || 450) + 200}
                               fill="white"
                             />
                             {/* Black cutout creates a 100% clear window over the exact focus area shape */}
                             {focus.shape === 'circle' ? (
                               <ellipse
-                                cx={focusXPx + focusWPx / 2}
-                                cy={focusYPx + focusHPx / 2}
-                                rx={focusWPx / 2}
-                                ry={focusHPx / 2}
+                                cx={exactFocusX + exactFocusW / 2}
+                                cy={exactFocusY + exactFocusH / 2}
+                                rx={Math.max(0.1, exactFocusW / 2)}
+                                ry={Math.max(0.1, exactFocusH / 2)}
                                 fill="black"
                               />
                             ) : (
                               <rect
-                                x={focusXPx}
-                                y={focusYPx}
-                                width={focusWPx}
-                                height={focusHPx}
-                                rx={
-                                   focus.shape === 'pill'
-                                     ? Math.min(focusWPx, focusHPx) / 2
-                                     : focus.shape === 'rectangle'
-                                     ? 0
-                                     : Math.min(focus.radius, focusHPx / 2, focusWPx / 2)
-                                }
-                                ry={
-                                   focus.shape === 'pill'
-                                     ? Math.min(focusWPx, focusHPx) / 2
-                                     : focus.shape === 'rectangle'
-                                     ? 0
-                                     : Math.min(focus.radius, focusHPx / 2, focusWPx / 2)
-                                }
+                                x={exactFocusX}
+                                y={exactFocusY}
+                                width={Math.max(0.1, exactFocusW)}
+                                height={Math.max(0.1, exactFocusH)}
+                                rx={exactRadius}
+                                ry={exactRadius}
                                 fill="black"
                               />
                             )}
                           </mask>
                         </defs>
                         <rect
-                          x="-30"
-                          y="-30"
-                          width={(renderedDimensions.width || 204) + 60}
-                          height={(renderedDimensions.height || 450) + 60}
+                          x="-100"
+                          y="-100"
+                          width={(renderedDimensions.width || 204) + 200}
+                          height={(renderedDimensions.height || 450) + 200}
                           fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
                           opacity={1 - settings.screenshotOpacity}
                           mask="url(#focus-cutout-mask)"
@@ -472,10 +477,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       </>
                     ) : (
                       <rect
-                        x="-30"
-                        y="-30"
-                        width={(renderedDimensions.width || 204) + 60}
-                        height={(renderedDimensions.height || 450) + 60}
+                        x="-100"
+                        y="-100"
+                        width={(renderedDimensions.width || 204) + 200}
+                        height={(renderedDimensions.height || 450) + 200}
                         fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
                         opacity={1 - settings.screenshotOpacity}
                       />
@@ -483,6 +488,41 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   </svg>
                 )}
               </div>
+
+              {/* Layer 3: Focus Contour Border (Placed outside overflow-hidden so it can overflow/bleed beyond screenshot edges freely) */}
+              {focus.enabled && focus.showBorder && (
+                <svg
+                  id="focus-contour-border-svg"
+                  className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
+                  viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
+                >
+                  {focus.shape === 'circle' ? (
+                    <ellipse
+                      cx={exactFocusX + exactFocusW / 2}
+                      cy={exactFocusY + exactFocusH / 2}
+                      rx={Math.max(0.1, exactFocusW / 2)}
+                      ry={Math.max(0.1, exactFocusH / 2)}
+                      fill="none"
+                      stroke={focus.borderColor || '#cc0000'}
+                      strokeWidth={focus.borderWidth || 2}
+                      strokeDasharray={focus.borderStyle === 'dashed' ? '4 4' : undefined}
+                    />
+                  ) : (
+                    <rect
+                      x={exactFocusX}
+                      y={exactFocusY}
+                      width={Math.max(0.1, exactFocusW)}
+                      height={Math.max(0.1, exactFocusH)}
+                      rx={exactRadius}
+                      ry={exactRadius}
+                      fill="none"
+                      stroke={focus.borderColor || '#cc0000'}
+                      strokeWidth={focus.borderWidth || 2}
+                      strokeDasharray={focus.borderStyle === 'dashed' ? '4 4' : undefined}
+                    />
+                  )}
+                </svg>
+              )}
 
               {/* Visual Magnetic Guidelines (Shown when centered or snapped, subtle dashed line without text badges) */}
               {!isExporting && focus.enabled && (
@@ -505,11 +545,11 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 </>
               )}
 
-              {/* Layer 3: Interactive Visual Focus Box (Internal border, no drop shadow, user color respected) */}
+              {/* Layer 3: Interactive Visual Focus Box (Hitbox and resize handles, perfectly aligned) */}
               {focus.enabled && (
                 <div
                   id="interactive-focus-box"
-                  className={`absolute z-20 group transition-all touch-none select-none box-border ${
+                  className={`absolute z-20 group touch-none select-none box-border ${
                     isDragging ? 'cursor-grabbing' : 'cursor-grab'
                   }`}
                   style={{
@@ -525,15 +565,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                         : focus.shape === 'rectangle'
                         ? '0px'
                         : `${focus.radius}px`,
-                    // Inner border implementation (box-border with border or inset border)
-                    borderWidth: focus.showBorder ? `${focus.borderWidth || 2}px` : !isExporting ? '1px' : '0px',
-                    borderColor: focus.showBorder
-                      ? focus.borderColor
-                      : !isExporting
-                      ? 'rgba(204, 0, 0, 0.6)'
-                      : 'transparent',
-                    borderStyle: focus.borderStyle === 'dashed' ? 'dashed' : 'solid',
-                    boxShadow: 'none', // No drop-shadow on the border as requested
+                    border: !focus.showBorder && !isExporting ? '1px dashed rgba(204, 0, 0, 0.5)' : 'none',
+                    boxShadow: 'none',
                   }}
                   onPointerDown={(e) => handlePointerDown(e, 'move')}
                 >

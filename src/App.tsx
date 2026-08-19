@@ -365,26 +365,20 @@ export default function App() {
 
           ctx.save();
           const bWidth = (settings.focus.borderWidth || 2) * effectiveScale;
-          const halfB = bWidth / 2;
-          const strokeX = boxX + halfB;
-          const strokeY = boxY + halfB;
-          const strokeW = Math.max(1, boxW - bWidth);
-          const strokeH = Math.max(1, boxH - bWidth);
-          const strokeR = Math.max(0, boxR - halfB);
 
           ctx.beginPath();
           if (settings.focus.shape === 'circle') {
             ctx.ellipse(
               boxX + boxW / 2,
               boxY + boxH / 2,
-              Math.max(1, boxW / 2 - halfB),
-              Math.max(1, boxH / 2 - halfB),
+              boxW / 2,
+              boxH / 2,
               0,
               0,
               Math.PI * 2
             );
           } else {
-            ctx.roundRect(strokeX, strokeY, strokeW, strokeH, strokeR);
+            ctx.roundRect(boxX, boxY, boxW, boxH, boxR);
           }
           ctx.strokeStyle = settings.focus.borderColor || '#cc0000';
           ctx.lineWidth = bWidth;
