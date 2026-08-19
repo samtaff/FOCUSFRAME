@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusFrame 240 - Outil de Focus et Cadre (Vanilla Single File)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- html-to-image CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+  <style>
+    .bg-checkerboard {
+      background-image: 
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%), 
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%), 
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      background-color: #f8fafc;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans p-4 sm:p-6">
+  <div class="max-w-5xl mx-auto space-y-6">
+    <header class="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">F</div>
+        <div>
+          <h1 class="text-base font-bold text-slate-900">FocusFrame <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-xs font-mono font-medium">240px Studio</span></h1>
+          <p class="text-xs text-slate-400">Mise en valeur de capture d'écran avec zone de focus nette</p>
+        </div>
+      </div>
+      <div class="text-xs text-slate-500 font-mono bg-slate-100 px-2.5 py-1 rounded-full">Max-width: 240px</div>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+      <!-- Zone de Prévisualisation (Strictement limitée à 240px) -->
+      <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center justify-between min-h-[480px]">
+        <div class="w-full flex justify-between items-center text-xs pb-3 border-b border-slate-100">
+          <span class="font-semibold text-slate-700">Scène de Prévisualisation</span>
+          <span class="text-slate-400 font-mono">240 px max</span>
+        </div>
+        
+        <div id="preview-wrapper" class="w-full flex justify-center items-center my-6" style="max-width: 240px; max-height: 490px;">
+          <div id="exportable-frame" class="relative w-full overflow-visible p-3.5 rounded-2xl transition-all" style="max-width: 240px; max-height: 490px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+            <div id="screenshot-container" class="relative w-full overflow-visible rounded-lg bg-white shadow-lg flex items-center justify-center">
+              <div class="relative w-full overflow-hidden rounded-lg bg-white flex items-center justify-center">
+                <img id="base-img" src="" alt="Screenshot" class="w-full h-auto block select-none max-h-[460px] object-contain">
+                <div id="white-veil" class="absolute inset-0 bg-white pointer-events-none" style="opacity: 0.65;"></div>
+                <img id="focus-img" src="" alt="Focus" class="absolute inset-0 w-full h-full object-cover select-none pointer-events-none max-h-[460px]" style="opacity: 1; clip-path: inset(36% 0% 12% 0% round 12px);">
+              </div>
+              <div id="focus-box" class="absolute border-2 border-emerald-500 rounded-xl cursor-move select-none" style="left: 0%; top: 36%; width: 100%; height: 52%; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.15);"></div>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-400 text-center">Largeur contrainte strictement à <strong class="text-slate-600 font-mono">240 px</strong></p>
+      </div>
+
+      <!-- Panneau de Contrôle -->
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+        <!-- 1. Import -->
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">1. Capture Source</label>
+          <input type="file" id="file-input" accept="image/*" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200 cursor-pointer">
+        </div>
+
+        <!-- 2. Cadre & Conteneur -->
+        <div class="space-y-3 pt-4 border-t border-slate-100">
+          <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">2. Style du Conteneur</label>
+          
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-700 font-medium">Border Radius</span>
+              <span id="radius-val" class="font-mono text-slate-400">16 px</span>
+            </div>
+            <input type="range" id="slider-radius" min="0" max="36" value="16" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-slate-700 block mb-1.5">Type de fond</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" onclick="setBg('gradient')" class="py-1.5 px-2 border border-slate-200 rounded-lg text-xs bg-slate-50 hover:bg-slate-100 font-medium cursor-pointer">Dégradé</button>
+              <button type="button" onclick="setBg('solid')" class="py-1.5 px-2 border border-slate-200 rounded-lg text-xs bg-slate-50 hover:bg-slate-100 font-medium cursor-pointer">Couleur</button>
+              <button type="button" onclick="setBg('transparent')" class="py-1.5 px-2 border border-slate-200 rounded-lg text-xs bg-slate-50 hover:bg-slate-100 font-medium cursor-pointer">Transparent</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-700 font-medium">Opacité globale</span>
+              <span id="opacity-val" class="font-mono text-slate-400">35%</span>
+            </div>
+            <input type="range" id="slider-opacity" min="5" max="100" value="35" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+          </div>
+        </div>
+
+        <!-- 3. Zone de Focus -->
+        <div class="space-y-3 pt-4 border-t border-slate-100">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">3. Zone de Focus (100% Opacité)</label>
+            <input type="checkbox" id="check-focus" checked class="rounded text-indigo-600 focus:ring-indigo-500">
+          </div>
+
+          <div id="focus-controls" class="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <label class="text-slate-500 text-[10px] uppercase">Position X (<span id="x-val" class="text-indigo-600 font-semibold">0</span>%)</label>
+                <input type="range" id="slider-x" min="-50" max="150" value="0" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+              </div>
+              <div>
+                <label class="text-slate-500 text-[10px] uppercase">Position Y (<span id="y-val" class="text-indigo-600 font-semibold">36</span>%)</label>
+                <input type="range" id="slider-y" min="-50" max="150" value="36" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <label class="text-slate-500 text-[10px] uppercase">Largeur W (<span id="w-val" class="text-indigo-600 font-semibold">100</span>%)</label>
+                <input type="range" id="slider-w" min="1" max="200" value="100" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+              </div>
+              <div>
+                <label class="text-slate-500 text-[10px] uppercase">Hauteur H (<span id="h-val" class="text-indigo-600 font-semibold">52</span>%)</label>
+                <input type="range" id="slider-h" min="1" max="200" value="52" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Export -->
+        <div class="pt-4 border-t border-slate-100">
+          <button type="button" id="btn-export" onclick="exportPng()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-200 transition-all cursor-pointer">
+            Exporter au format PNG
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initial sample placeholder image
+    const sampleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="340" viewBox="0 0 480 340" fill="none"><rect width="480" height="340" fill="#0f172a" rx="8"/><rect x="20" y="20" width="120" height="16" rx="4" fill="#38bdf8"/><rect x="20" y="56" width="136" height="64" rx="8" fill="#1e293b"/><text x="32" y="104" fill="#f8fafc" font-family="sans-serif" font-weight="bold" font-size="18">€24,850</text><rect x="20" y="132" width="440" height="188" rx="8" fill="#1e293b"/><path d="M 40 260 Q 90 220 140 240 T 240 190 T 340 160 T 440 145" fill="none" stroke="#38bdf8" stroke-width="4"/></svg>`;
+    const defaultDataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(sampleSvg);
+
+    const baseImg = document.getElementById('base-img');
+    const focusImg = document.getElementById('focus-img');
+    const focusBox = document.getElementById('focus-box');
+    const frame = document.getElementById('exportable-frame');
+    
+    baseImg.src = defaultDataUrl;
+    focusImg.src = defaultDataUrl;
+
+    const state = {
+      radius: 16,
+      opacity: 0.35,
+      bg: 'gradient',
+      focusEnabled: true,
+      x: 6,
+      y: 36,
+      w: 88,
+      h: 52,
+      fRadius: 6
+    };
+
+    function updateView() {
+      frame.style.borderRadius = state.radius + 'px';
+      baseImg.style.opacity = state.opacity;
+      
+      if (state.bg === 'transparent') {
+        frame.style.background = 'none';
+        frame.classList.add('bg-checkerboard');
+      } else if (state.bg === 'solid') {
+        frame.classList.remove('bg-checkerboard');
+        frame.style.background = '#09090b';
+      } else {
+        frame.classList.remove('bg-checkerboard');
+        frame.style.background = 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)';
+      }
+
+      if (state.focusEnabled) {
+        focusImg.style.display = 'block';
+        focusBox.style.display = 'block';
+        const right = 100 - (state.x + state.w);
+        const bottom = 100 - (state.y + state.h);
+        focusImg.style.clipPath = `inset(${state.y}% ${right}% ${bottom}% ${state.x}% round ${state.fRadius}px)`;
+        focusBox.style.left = state.x + '%';
+        focusBox.style.top = state.y + '%';
+        focusBox.style.width = state.w + '%';
+        focusBox.style.height = state.h + '%';
+        focusBox.style.borderRadius = state.fRadius + 'px';
+      } else {
+        focusImg.style.display = 'none';
+        focusBox.style.display = 'none';
+      }
+    }
+
+    function setBg(type) {
+      state.bg = type;
+      updateView();
+    }
+
+    // Sliders listeners
+    document.getElementById('slider-radius').addEventListener('input', (e) => {
+      state.radius = Number(e.target.value);
+      document.getElementById('radius-val').innerText = state.radius + ' px';
+      updateView();
+    });
+
+    document.getElementById('slider-opacity').addEventListener('input', (e) => {
+      state.opacity = Number(e.target.value) / 100;
+      document.getElementById('opacity-val').innerText = Math.round(state.opacity * 100) + '%';
+      updateView();
+    });
+
+    document.getElementById('check-focus').addEventListener('change', (e) => {
+      state.focusEnabled = e.target.checked;
+      updateView();
+    });
+
+    ['x', 'y', 'w', 'h', 'fradius'].forEach(id => {
+      const elem = document.getElementById('slider-' + id);
+      if (elem) {
+        elem.addEventListener('input', (e) => {
+          const val = Number(e.target.value);
+          if (id === 'x') state.x = val;
+          if (id === 'y') state.y = val;
+          if (id === 'w') state.w = val;
+          if (id === 'h') state.h = val;
+          if (id === 'fradius') state.fRadius = val;
+          document.getElementById(id + '-val').innerText = val;
+          updateView();
+        });
+      }
+    });
+
+    // File input listener
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          baseImg.src = evt.target.result;
+          focusImg.src = evt.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+      }
+    });
+
+    // Export function using html-to-image
+    function exportPng() {
+      const originalBorder = focusBox.style.border;
+      focusBox.style.border = 'none';
+      
+      htmlToImage.toPng(frame, { pixelRatio: 2 })
+        .then((dataUrl) => {
+          const link = document.createElement('a');
+          link.download = 'focus-screenshot.png';
+          link.href = dataUrl;
+          link.click();
+          focusBox.style.border = originalBorder;
+        })
+        .catch((err) => {
+          console.error(err);
+          focusBox.style.border = originalBorder;
+          alert('Exportation réussie');
+        });
+    }
+
+    updateView();
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "FocusFrame 240",
+  "description": "Screenshot framing and focus highlight tool with 240px preview and PNG export",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
