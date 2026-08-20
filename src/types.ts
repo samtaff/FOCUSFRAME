@@ -6,6 +6,10 @@ export type BorderStyle = 'solid' | 'dashed' | 'glow';
 
 export type FocusShape = 'rounded' | 'pill' | 'circle' | 'rectangle';
 
+export type ZoneMode = 'focus' | 'blur';
+
+export type BlurStyle = 'gaussian' | 'frost' | 'dark';
+
 export interface CustomShadowSettings {
   enabled: boolean;
   color: string; // default: '#000000'
@@ -19,6 +23,10 @@ export interface FocusRect {
   id?: string;
   name?: string;
   enabled: boolean;
+  mode?: ZoneMode; // 'focus' (Mise en valeur) | 'blur' (Floutage / Censure)
+  blurAmount?: number; // in px, default: 10 (range 2 - 30)
+  blurOpacity?: number; // 0.05 to 1.0 (5% to 100%, default: 1.0)
+  blurStyle?: BlurStyle; // 'gaussian' | 'frost' | 'dark'
   shape?: FocusShape; // 'rounded' | 'pill' | 'circle' | 'rectangle'
   x: number; // percentage (supports negative and > 100 for overflow)
   y: number; // percentage
@@ -44,6 +52,7 @@ export interface FrameSettings {
   bgColor: string;
   bgGradient: string;
   screenshotOpacity: number; // 0.05 to 1.0 (5% to 100%)
+  backgroundBlur?: number; // in px (0 - 20, default: 0)
   dimmingType?: 'dark' | 'light';
   screenshotRadius: number; // in px (0 - 24)
   shadow: ShadowStyle;

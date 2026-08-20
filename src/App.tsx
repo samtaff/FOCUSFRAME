@@ -345,6 +345,54 @@ export default function App() {
     showToast('Nouvelle zone de focus ajoutée !', 'success');
   };
 
+  const handleAddBlurZone = () => {
+    setSettings((prev) => {
+      const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
+      const newZoneNumber = curFocuses.length + 1;
+      const screenW = screenDimensions.width || 204;
+      const screenH = screenDimensions.height || 450;
+
+      // Default blur area: horizontal pill / rounded rect across text or metrics
+      const blurW = Math.min(screenW * 0.75, 140);
+      const blurH = Math.min(screenH * 0.15, 36);
+      const blurWPct = (blurW / screenW) * 100;
+      const blurHPct = (blurH / screenH) * 100;
+      const newXPct = ((screenW - blurW) / 2 / screenW) * 100;
+      const offsetTop = Math.min(75, 25 + (curFocuses.length % 4) * 16);
+
+      const newZone: FocusRect = {
+        id: 'blur-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: `Zone Flou ${newZoneNumber}`,
+        enabled: true,
+        mode: 'blur',
+        blurAmount: 10,
+        blurStyle: 'gaussian',
+        shape: 'rounded',
+        x: Math.round(newXPct * 10) / 10,
+        y: Math.round(offsetTop * 10) / 10,
+        width: Math.round(blurWPct * 10) / 10,
+        height: Math.round(blurHPct * 10) / 10,
+        margin: 0,
+        radius: 8,
+        showBorder: false,
+        borderColor: '#0284c7',
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        snapEnabled: true,
+        lockSignature: false,
+      };
+
+      const updated = [...curFocuses, newZone];
+      return {
+        ...prev,
+        focuses: updated,
+        activeFocusIndex: updated.length - 1,
+        focus: newZone,
+      };
+    });
+    showToast('Zone de flou / censure ajoutée !', 'info');
+  };
+
   const handleRemoveFocusZone = (indexToRemove: number) => {
     setSettings((prev) => {
       const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
@@ -538,17 +586,17 @@ export default function App() {
         // Draw Base Image
         ctx.drawImage(img, pad, pad, innerW, innerH);
 
-        // Draw Dimming Veil over everything EXCEPT all enabled focus areas using evenodd cutout
+        // Draw Dimming Veil over screenshot: cut out ONLY active FOCUS (non-blur) zones so focus zones stay 100% bright
         const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
-        const enabledFocuses = allFocuses.filter((f) => f.enabled);
+        const focusCutoutZones = allFocuses.filter((f) => f.enabled && f.mode !== 'blur');
 
-        if (enabledFocuses.length > 0) {
+        if (focusCutoutZones.length > 0 && settings.screenshotOpacity < 1.0) {
           ctx.beginPath();
           // Outer bounds of screenshot with bleed to prevent subpixel edge lines
           ctx.rect(pad - 2, pad - 2, innerW + 4, innerH + 4);
 
-          // Cutout for each enabled focus
-          for (const f of enabledFocuses) {
+          // Cutout only for active Focus zones
+          for (const f of focusCutoutZones) {
             const imgFocusX = pad + (innerW * f.x) / 100;
             const imgFocusY = pad + (innerH * f.y) / 100;
             const imgFocusW = (innerW * f.width) / 100;
@@ -581,12 +629,122 @@ export default function App() {
             ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
             : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
           ctx.fill('evenodd');
-        } else {
-          ctx.fillStyle = settings.dimmingType === 'light' 
-            ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
-            : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
-          ctx.fillRect(pad - 2, pad - 2, innerW + 4, innerH + 4);
         }
+
+        // Draw Selective Localized Blur Zones (Clean localized Gaussian blur, pure and artifact-free)
+        const blurZones = allFocuses.filter((f) => f.enabled && f.mode === 'blur');
+        if (blurZones.length > 0) {
+          const nw = img.naturalWidth || innerW;
+          const nh = img.naturalHeight || innerH;
+
+          for (const f of blurZones) {
+            const bExactX = pad + (innerW * f.x) / 100;
+            const bExactY = pad + (innerH * f.y) / 100;
+            const bExactW = (innerW * f.width) / 100;
+            const bExactH = (innerH * f.height) / 100;
+            if (bExactW <= 1 || bExactH <= 1) continue;
+
+            const blurPx = Math.max(1, Math.round((f.blurAmount ?? 10) * (effectiveScale / 1.5 || 1)));
+
+            // Compute localized source crop bounds with a generous margin that stays strictly in the neighborhood
+            const sx = (f.x / 100) * nw;
+            const sy = (f.y / 100) * nh;
+            const sw = (f.width / 100) * nw;
+            const sh = (f.height / 100) * nh;
+
+            const bleedOut = Math.max(20, blurPx * 3);
+            const bleedSrcX = bleedOut * (nw / innerW);
+            const bleedSrcY = bleedOut * (nh / innerH);
+
+            const cropX0 = Math.max(0, sx - bleedSrcX);
+            const cropY0 = Math.max(0, sy - bleedSrcY);
+            const cropX1 = Math.min(nw, sx + sw + bleedSrcX);
+            const cropY1 = Math.min(nh, sy + sh + bleedSrcY);
+            const cropW = cropX1 - cropX0;
+            const cropH = cropY1 - cropY0;
+
+            if (cropW <= 1 || cropH <= 1) continue;
+
+            const patchW = Math.round(cropW * (innerW / nw));
+            const patchH = Math.round(cropH * (innerH / nh));
+
+            const patchCanvas = document.createElement('canvas');
+            patchCanvas.width = patchW;
+            patchCanvas.height = patchH;
+            const pCtx = patchCanvas.getContext('2d');
+            if (!pCtx) continue;
+
+            pCtx.imageSmoothingEnabled = true;
+            pCtx.imageSmoothingQuality = 'high';
+            // Draw clean source crop
+            pCtx.drawImage(img, cropX0, cropY0, cropW, cropH, 0, 0, patchW, patchH);
+
+            // Apply exact screenshot opacity/dimming to the patch so the blur zone matches surrounding screenshot perfectly
+            if (settings.screenshotOpacity < 1.0) {
+              pCtx.fillStyle = settings.dimmingType === 'light'
+                ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
+                : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
+              pCtx.fillRect(0, 0, patchW, patchH);
+            }
+
+            // Create blurred version of the patch
+            const blurredPatchCanvas = document.createElement('canvas');
+            blurredPatchCanvas.width = patchW;
+            blurredPatchCanvas.height = patchH;
+            const bpCtx = blurredPatchCanvas.getContext('2d');
+            if (!bpCtx) continue;
+
+            bpCtx.imageSmoothingEnabled = true;
+            bpCtx.imageSmoothingQuality = 'high';
+            bpCtx.filter = `blur(${blurPx}px)`;
+            bpCtx.drawImage(patchCanvas, 0, 0);
+            bpCtx.filter = 'none';
+
+            // Calculate destination position of patch
+            const patchOffsetX = (sx - cropX0) * (innerW / nw);
+            const patchOffsetY = (sy - cropY0) * (innerH / nh);
+            const drawDestX = bExactX - patchOffsetX;
+            const drawDestY = bExactY - patchOffsetY;
+
+            let bRadius = Math.min(bExactH / 2, (f.radius || 8) * effectiveScale);
+            if (f.shape === 'pill' || f.shape === 'circle') {
+              bRadius = Math.min(bExactW, bExactH) / 2;
+            } else if (f.shape === 'rectangle') {
+              bRadius = 0;
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            if (f.shape === 'circle') {
+              ctx.ellipse(
+                bExactX + bExactW / 2,
+                bExactY + bExactH / 2,
+                bExactW / 2,
+                bExactH / 2,
+                0,
+                0,
+                Math.PI * 2
+              );
+            } else {
+              ctx.roundRect(bExactX, bExactY, bExactW, bExactH, bRadius);
+            }
+            ctx.clip();
+
+            ctx.globalAlpha = f.blurOpacity ?? 1.0;
+            ctx.drawImage(blurredPatchCanvas, drawDestX, drawDestY, patchW, patchH);
+
+            if (f.blurStyle === 'dark') {
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+              ctx.fill();
+            } else if (f.blurStyle === 'frost') {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.30)';
+              ctx.fill();
+            }
+
+            ctx.restore();
+          }
+        }
+
         ctx.restore();
 
         // 4. Draw Focus Borders with exact coordinates & crisp stroke if enabled
@@ -664,23 +822,32 @@ export default function App() {
       const effectiveRatio = getHomotheticPixelRatio(baseScale);
       let blob: Blob | null = null;
 
-      // Primary: High-fidelity DOM to PNG via html-to-image (preserves full resolution, subpixel crisp fonts and smooth shadows)
-      try {
-        blob = await toBlob(previewFrameRef.current, {
-          pixelRatio: effectiveRatio,
-          cacheBust: true,
-          style: {
-            transform: 'none',
-            background: settings.bgType === 'transparent' ? 'transparent' : undefined,
-            backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
-            backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
-          },
-        });
-      } catch (domErr) {
-        console.warn('html-to-image toBlob fallback to canvas:', domErr);
+      const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
+      const hasAnyBlur = allFocuses.some((f) => f.enabled && f.mode === 'blur');
+
+      // Primary: If any localized blur zone is enabled, direct Canvas generator renders pixel-perfect isolated blur without whole-image artifacts
+      if (hasAnyBlur) {
         const dataUrl = await renderFallbackCanvas(baseScale);
         const res = await fetch(dataUrl);
         blob = await res.blob();
+      } else {
+        try {
+          blob = await toBlob(previewFrameRef.current, {
+            pixelRatio: effectiveRatio,
+            cacheBust: true,
+            style: {
+              transform: 'none',
+              background: settings.bgType === 'transparent' ? 'transparent' : undefined,
+              backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
+              backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
+            },
+          });
+        } catch (domErr) {
+          console.warn('html-to-image toBlob fallback to canvas:', domErr);
+          const dataUrl = await renderFallbackCanvas(baseScale);
+          const res = await fetch(dataUrl);
+          blob = await res.blob();
+        }
       }
 
       if (!blob) {
@@ -782,21 +949,30 @@ export default function App() {
       const effectiveRatio = getHomotheticPixelRatio(baseScale);
       let blob: Blob | null = null;
 
-      try {
-        blob = await toBlob(previewFrameRef.current, {
-          pixelRatio: effectiveRatio,
-          cacheBust: true,
-          style: {
-            transform: 'none',
-            background: settings.bgType === 'transparent' ? 'transparent' : undefined,
-            backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
-            backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
-          },
-        });
-      } catch {
+      const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
+      const hasAnyBlur = allFocuses.some((f) => f.enabled && f.mode === 'blur');
+
+      if (hasAnyBlur) {
         const dataUrl = await renderFallbackCanvas(baseScale);
         const res = await fetch(dataUrl);
         blob = await res.blob();
+      } else {
+        try {
+          blob = await toBlob(previewFrameRef.current, {
+            pixelRatio: effectiveRatio,
+            cacheBust: true,
+            style: {
+              transform: 'none',
+              background: settings.bgType === 'transparent' ? 'transparent' : undefined,
+              backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
+              backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
+            },
+          });
+        } catch {
+          const dataUrl = await renderFallbackCanvas(baseScale);
+          const res = await fetch(dataUrl);
+          blob = await res.blob();
+        }
       }
 
       if (blob && navigator.clipboard && window.ClipboardItem) {
@@ -863,6 +1039,24 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Photoshop-style Vertical Shape Toolbar (Global Floating Overlay with highest z-index) */}
+      <PhotoshopToolbar
+        focus={settings.focus}
+        focuses={settings.focuses}
+        activeFocusIndex={settings.activeFocusIndex}
+        onUpdateFocus={handleUpdateFocus}
+        onSelectActiveFocus={handleSelectActiveFocus}
+        onAddFocusZone={handleAddFocusZone}
+        onAddBlurZone={handleAddBlurZone}
+        onRemoveFocusZone={handleRemoveFocusZone}
+        screenW={screenDimensions.width}
+        screenH={screenDimensions.height}
+        containerRef={stageContainerRef}
+        onSaveAs={() => handleExportPng(true)}
+        isHandToolActive={isHandToolActive}
+        onToggleHandTool={handleToggleHandTool}
+      />
 
       {/* Main Workspace Layout */}
       <main className="relative z-10 flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1038,23 +1232,6 @@ export default function App() {
                 : ''
             }`}
           >
-            {/* Photoshop-style Vertical Shape Toolbar in LiquidGlass (Draggable) */}
-            <PhotoshopToolbar
-              focus={settings.focus}
-              focuses={settings.focuses}
-              activeFocusIndex={settings.activeFocusIndex}
-              onUpdateFocus={handleUpdateFocus}
-              onSelectActiveFocus={handleSelectActiveFocus}
-              onAddFocusZone={handleAddFocusZone}
-              onRemoveFocusZone={handleRemoveFocusZone}
-              screenW={screenDimensions.width}
-              screenH={screenDimensions.height}
-              containerRef={stageContainerRef}
-              onSaveAs={() => handleExportPng(true)}
-              isHandToolActive={isHandToolActive}
-              onToggleHandTool={handleToggleHandTool}
-            />
-
             {/* Container for the 240px constrained card (macOS Frosted Tile) */}
             <div
               className={`relative z-10 w-full flex flex-col items-center justify-center p-8 sm:p-10 lg:p-12 macos-card bg-canvas-dots transition-all duration-150 min-h-[540px] xl:min-h-[620px] ${
@@ -1099,6 +1276,7 @@ export default function App() {
             onUpdateFocus={handleUpdateFocus}
             onSelectActiveFocus={handleSelectActiveFocus}
             onAddFocusZone={handleAddFocusZone}
+            onAddBlurZone={handleAddBlurZone}
             onRemoveFocusZone={handleRemoveFocusZone}
             onDuplicateFocusZone={handleDuplicateFocusZone}
             onImportImage={handleImportImage}

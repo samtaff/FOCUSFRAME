@@ -5,6 +5,8 @@ import {
   ShadowStyle,
   BorderStyle,
   ExportFormatPreset,
+  ZoneMode,
+  BlurStyle,
 } from '../types';
 import {
   GRADIENT_PRESETS,
@@ -34,6 +36,8 @@ import {
   ChevronDown,
   Plus,
   Trash2,
+  Droplet,
+  EyeOff,
 } from 'lucide-react';
 import { PreciseNumberInput } from './PreciseNumberInput';
 import { FocusRect } from '../types';
@@ -45,6 +49,7 @@ interface ControlPanelProps {
   onUpdateFocus: (focus: Partial<FocusRect>, targetIndex?: number) => void;
   onSelectActiveFocus?: (index: number) => void;
   onAddFocusZone?: () => void;
+  onAddBlurZone?: () => void;
   onRemoveFocusZone?: (index: number) => void;
   onDuplicateFocusZone?: (index: number) => void;
   onImportImage: (file: File) => void;
@@ -63,6 +68,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onUpdateFocus,
   onSelectActiveFocus,
   onAddFocusZone,
+  onAddBlurZone,
   onRemoveFocusZone,
   onDuplicateFocusZone,
   onImportImage,
@@ -76,10 +82,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [unit, setUnit] = useState<'px' | '%'>('px');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    source: true,
-    container: false, // Section 2 fermée par défaut
-    focus: true,
-    export: true,
+    source: false, // Toutes les sections fermées par défaut
+    container: false,
+    focus: false,
+    export: false,
   });
 
   const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
@@ -622,6 +628,50 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             />
           </div>
 
+          {/* Curseur: Flou d'arrière-plan du screenshot (Background Blur) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-700 font-medium flex items-center gap-1.5">
+                <Droplet className="w-3.5 h-3.5 text-blue-500" />
+                <span>Flou de l'arrière-plan</span>
+              </span>
+              <span className="text-slate-600 font-mono font-semibold text-[11px]">
+                {settings.backgroundBlur ? `${settings.backgroundBlur}px` : 'Désactivé (0px)'}
+              </span>
+            </div>
+            <input
+              id="slider-background-blur"
+              type="range"
+              min="0"
+              max="20"
+              step="1"
+              value={settings.backgroundBlur || 0}
+              onChange={(e) => onUpdateSettings({ backgroundBlur: Number(e.target.value) })}
+              className="macos-slider"
+            />
+            <div className="flex gap-1.5 pt-0.5">
+              {[
+                { label: '0px (Net)', val: 0 },
+                { label: '4px (Léger)', val: 4 },
+                { label: '8px (Moyen)', val: 8 },
+                { label: '14px (Intense)', val: 14 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => onUpdateSettings({ backgroundBlur: preset.val })}
+                  className={`text-[10px] px-2.5 py-1 rounded-md border transition-all cursor-pointer ${
+                    (settings.backgroundBlur || 0) === preset.val
+                      ? 'bg-blue-600 text-white border-blue-600 font-medium shadow-2xs'
+                      : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Arrondi du screenshot intérieur */}
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs mb-1">
@@ -707,7 +757,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="flex flex-col gap-2 bg-white/90 p-2.5 rounded-xl border border-black/10 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    Zones de focus ({allFocuses.length})
+                    Zones actives ({allFocuses.length})
                   </span>
                   <div className="flex items-center gap-1.5">
                     {onAddFocusZone && (
@@ -718,7 +768,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         className="px-2 py-0.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>Ajouter une zone</span>
+                        <span>+ Focus</span>
+                      </button>
+                    )}
+                    {onAddBlurZone && (
+                      <button
+                        type="button"
+                        id="btn-add-blur-zone"
+                        onClick={onAddBlurZone}
+                        className="px-2 py-0.5 text-[11px] font-medium bg-sky-600 hover:bg-sky-700 text-white rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Droplet className="w-3 h-3" />
+                        <span>+ Flou</span>
                       </button>
                     )}
                     {allFocuses.length > 1 && onDuplicateFocusZone && (
@@ -753,21 +814,219 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       key={f.id || `zone-tab-${idx}`}
                       type="button"
                       onClick={() => onSelectActiveFocus?.(idx)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shrink-0 ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                         idx === activeFocusIndex
-                          ? 'bg-slate-900 text-white shadow-xs'
+                          ? f.mode === 'blur'
+                            ? 'bg-sky-700 text-white shadow-xs'
+                            : 'bg-slate-900 text-white shadow-xs'
                           : 'bg-black/[0.04] text-slate-700 hover:bg-black/[0.08]'
                       }`}
                     >
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          f.enabled ? 'bg-emerald-400' : 'bg-slate-400'
-                        }`}
-                      />
+                      <span>{f.mode === 'blur' ? '💧' : '🎯'}</span>
                       <span>{f.name || `Zone ${idx + 1}`}</span>
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Mode Selector for Active Zone (Focus vs Flou) */}
+              <div className="space-y-1.5 bg-white/90 p-2.5 rounded-xl border border-black/10 shadow-2xs">
+                <div className="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider">
+                  <span className="font-semibold">Type d'effet de la zone</span>
+                  <span className="font-mono font-bold text-[11px] text-slate-800">
+                    {focus.mode === 'blur' ? 'Floutage / Censure' : 'Mise en valeur (Focus)'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  {/* Focus Mode Button */}
+                  <button
+                    type="button"
+                    id="zone-mode-focus"
+                    onClick={() => {
+                      updateActiveFocus({
+                        mode: 'focus',
+                        name: focus.name?.replace('Zone Flou', 'Zone Focus') || 'Zone Focus',
+                        showBorder: true,
+                        borderColor: '#cc0000',
+                      });
+                      if (settings.screenshotOpacity === 1.0) {
+                        onUpdateSettings({ screenshotOpacity: 0.35 });
+                      }
+                    }}
+                    className={`py-2 px-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                      focus.mode !== 'blur'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                    }`}
+                  >
+                    <span className="text-sm">🎯</span>
+                    <div className="text-left">
+                      <div className="font-semibold text-[11px]">Mode Focus</div>
+                      <div className={`text-[9px] ${focus.mode !== 'blur' ? 'text-slate-300' : 'text-slate-500'}`}>
+                        Mise en valeur nette
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Blur Mode Button */}
+                  <button
+                    type="button"
+                    id="zone-mode-blur"
+                    onClick={() => {
+                      const hasOtherFocusZones = allFocuses.some(
+                        (f, idx) => idx !== activeFocusIndex && f.enabled && f.mode !== 'blur'
+                      );
+                      updateActiveFocus({
+                        mode: 'blur',
+                        blurAmount: focus.blurAmount || 10,
+                        blurOpacity: focus.blurOpacity ?? 1.0,
+                        blurStyle: focus.blurStyle || 'gaussian',
+                        name: focus.name?.replace('Zone Focus', 'Zone Flou') || 'Zone Flou',
+                        showBorder: false,
+                        borderColor: '#0284c7',
+                      });
+                      if (!hasOtherFocusZones && settings.screenshotOpacity < 1.0) {
+                        onUpdateSettings({ screenshotOpacity: 1.0 });
+                      }
+                    }}
+                    className={`py-2 px-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                      focus.mode === 'blur'
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                        : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                    }`}
+                  >
+                    <Droplet className="w-4 h-4 text-sky-200" />
+                    <div className="text-left">
+                      <div className="font-semibold text-[11px]">Mode Flou</div>
+                      <div className={`text-[9px] ${focus.mode === 'blur' ? 'text-sky-100' : 'text-slate-500'}`}>
+                        Censure & Floutage
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* If Blur Mode is Active: Blur Settings & Presets */}
+                {focus.mode === 'blur' && (
+                  <div className="mt-2.5 pt-2.5 border-t border-black/[0.08] space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-700 font-medium flex items-center gap-1">
+                        <Droplet className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Intensité du flou</span>
+                      </span>
+                      <span className="text-sky-700 font-mono font-bold text-[11px]">
+                        {focus.blurAmount ?? 10}px
+                      </span>
+                    </div>
+
+                    <input
+                      id="slider-zone-blur"
+                      type="range"
+                      min="2"
+                      max="30"
+                      step="1"
+                      value={focus.blurAmount ?? 10}
+                      onChange={(e) => updateActiveFocus({ blurAmount: Number(e.target.value) })}
+                      className="macos-slider"
+                    />
+
+                    {/* Quick Blur Presets */}
+                    <div className="flex gap-1 pt-0.5">
+                      {[
+                        { label: 'Léger (4px)', val: 4 },
+                        { label: 'Normal (8px)', val: 8 },
+                        { label: 'Fort (14px)', val: 14 },
+                        { label: 'Secret (24px)', val: 24 },
+                      ].map((bPreset) => (
+                        <button
+                          key={bPreset.label}
+                          type="button"
+                          onClick={() => updateActiveFocus({ blurAmount: bPreset.val })}
+                          className={`text-[10px] px-2 py-1 rounded-md border transition-all cursor-pointer flex-1 text-center ${
+                            (focus.blurAmount ?? 10) === bPreset.val
+                              ? 'bg-sky-600 text-white border-sky-600 font-semibold shadow-2xs'
+                              : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                          }`}
+                        >
+                          {bPreset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Style d'occultation */}
+                    <div className="pt-1 space-y-1">
+                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        Style du flou :
+                      </span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { id: 'gaussian', label: 'Gaussien' },
+                          { id: 'frost', label: 'Dépoli' },
+                          { id: 'dark', label: 'Sombre' },
+                        ].map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => updateActiveFocus({ blurStyle: st.id as BlurStyle })}
+                            className={`text-[10px] py-1 px-1 rounded-md border transition-all cursor-pointer text-center ${
+                              (focus.blurStyle || 'gaussian') === st.id
+                                ? 'bg-slate-800 text-white border-slate-800 font-semibold shadow-2xs'
+                                : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Opacité de la zone de flou */}
+                    <div className="pt-1.5 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-700 font-medium flex items-center gap-1">
+                          <span>Opacité du flou</span>
+                        </span>
+                        <span className="text-slate-700 font-mono font-bold text-[11px]">
+                          {Math.round((focus.blurOpacity ?? 1) * 100)}%
+                        </span>
+                      </div>
+
+                      <input
+                        id="slider-zone-blur-opacity"
+                        type="range"
+                        min="0.05"
+                        max="1"
+                        step="0.05"
+                        value={focus.blurOpacity ?? 1}
+                        onChange={(e) => updateActiveFocus({ blurOpacity: Number(e.target.value) })}
+                        className="macos-slider"
+                      />
+
+                      {/* Opacity presets */}
+                      <div className="flex gap-1 pt-0.5">
+                        {[
+                          { label: '25%', val: 0.25 },
+                          { label: '50%', val: 0.5 },
+                          { label: '75%', val: 0.75 },
+                          { label: '100%', val: 1.0 },
+                        ].map((opPreset) => (
+                          <button
+                            key={opPreset.label}
+                            type="button"
+                            onClick={() => updateActiveFocus({ blurOpacity: opPreset.val })}
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-all cursor-pointer flex-1 text-center ${
+                              Math.abs((focus.blurOpacity ?? 1) - opPreset.val) < 0.04
+                                ? 'bg-slate-800 text-white border-slate-800 font-semibold shadow-2xs'
+                                : 'bg-white/80 text-slate-700 border-black/10 hover:bg-white'
+                            }`}
+                          >
+                            {opPreset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Unit Selector & Screen Dimensions info banner */}

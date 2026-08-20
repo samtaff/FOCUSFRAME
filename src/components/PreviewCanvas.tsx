@@ -369,6 +369,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   };
 
   const hasAnyFocusEnabled = allFocuses.some((f) => f.enabled);
+  const hasAnyFocusCutout = allFocuses.some((f) => f.enabled && f.mode !== 'blur');
+  const hasAnyBlurZone = allFocuses.some((f) => f.enabled && f.mode === 'blur');
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
@@ -452,7 +454,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
                 }}
               >
-                {/* Layer 1: Base Screenshot Image (Always crisp & intact, never split) */}
+                {/* Layer 1: Base Screenshot Image (With optional background blur) */}
                 <img
                   id="target-screenshot-img"
                   src={imageSrc}
@@ -460,10 +462,34 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   className="w-full h-auto block select-none pointer-events-none object-contain"
                   style={{
                     maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                    filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
                   }}
                   crossOrigin="anonymous"
                   draggable={false}
                 />
+
+                {/* Layer 1.5: If background is blurred, render crisp unblurred cutout for Focus zones */}
+                {Boolean(settings.backgroundBlur && settings.backgroundBlur > 0 && hasAnyFocusCutout) && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-5"
+                    style={{
+                      maskImage: `url(#focus-crisp-mask)`,
+                      WebkitMaskImage: `url(#focus-crisp-mask)`,
+                    }}
+                  >
+                    <img
+                      src={imageSrc}
+                      alt=""
+                      aria-hidden="true"
+                      className="w-full h-auto block select-none pointer-events-none object-contain"
+                      style={{
+                        maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                      }}
+                      crossOrigin="anonymous"
+                      draggable={false}
+                    />
+                  </div>
+                )}
 
                 {/* Layer 2: SVG Mask Dimming Overlay (Dimmable everywhere except cutout shapes) */}
                 {settings.screenshotOpacity < 1.0 && (
@@ -472,7 +498,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     className="absolute inset-0 w-full h-full pointer-events-none z-10"
                     viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
                   >
-                    {hasAnyFocusEnabled ? (
+                    {hasAnyFocusCutout ? (
                       <>
                         <defs>
                           <mask id="focus-cutout-mask">
@@ -484,9 +510,9 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                               height={(renderedDimensions.height || 450) + 200}
                               fill="white"
                             />
-                            {/* Black cutout shapes for ALL active focus zones */}
+                            {/* Black cutout shapes ONLY for active FOCUS (non-blur) zones so focus zones stay 100% bright */}
                             {allFocuses.map((f, idx) => {
-                              if (!f.enabled) return null;
+                              if (!f.enabled || f.mode === 'blur') return null;
                               const fExactX = (f.x / 100) * curScreenW;
                               const fExactY = (f.y / 100) * curScreenH;
                               const fExactW = (f.width / 100) * curScreenW;
@@ -547,6 +573,53 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     )}
                   </svg>
                 )}
+
+                {/* Layer 2.5: Selective Local Blur Zones (Confidentiality / Censure / Anonymisation) */}
+                {hasAnyBlurZone &&
+                  allFocuses.map((f, idx) => {
+                    if (!f.enabled || f.mode !== 'blur') return null;
+                    const fExactX = (f.x / 100) * curScreenW;
+                    const fExactY = (f.y / 100) * curScreenH;
+                    const fExactW = (f.width / 100) * curScreenW;
+                    const fExactH = (f.height / 100) * curScreenH;
+
+                    let fRadius = 0;
+                    if (f.shape === 'pill' || f.shape === 'circle') {
+                      fRadius = Math.min(fExactW, fExactH) / 2;
+                    } else if (f.shape === 'rectangle') {
+                      fRadius = 0;
+                    } else {
+                      fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                    }
+
+                    const blurAmountPx = f.blurAmount ?? 10;
+                    const isCircle = f.shape === 'circle';
+                    const zoneOpacity = f.blurOpacity ?? 1.0;
+
+                    return (
+                      <div
+                        key={`selective-blur-${f.id || idx}`}
+                        id={`blur-overlay-zone-${idx}`}
+                        className="absolute pointer-events-none overflow-hidden z-15 select-none"
+                        style={{
+                          left: `${fExactX}px`,
+                          top: `${fExactY}px`,
+                          width: `${Math.max(1, fExactW)}px`,
+                          height: `${Math.max(1, fExactH)}px`,
+                          borderRadius: isCircle ? '50%' : `${fRadius}px`,
+                          opacity: zoneOpacity,
+                          backdropFilter: `blur(${blurAmountPx}px)`,
+                          WebkitBackdropFilter: `blur(${blurAmountPx}px)`,
+                          backgroundColor:
+                            f.blurStyle === 'dark'
+                              ? 'rgba(0, 0, 0, 0.35)'
+                              : f.blurStyle === 'frost'
+                              ? 'rgba(255, 255, 255, 0.30)'
+                              : 'transparent',
+                        }}
+                      />
+                    );
+                  })}
               </div>
 
               {/* Layer 3: Focus Contour Borders for ALL enabled zones with showBorder */}
@@ -658,14 +731,18 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       border:
                         !f.showBorder && !isExporting
                           ? isActive
-                            ? '1px dashed rgba(204, 0, 0, 0.6)'
+                            ? f.mode === 'blur'
+                              ? '1.5px dashed rgba(2, 132, 199, 0.8)'
+                              : '1px dashed rgba(204, 0, 0, 0.6)'
+                            : f.mode === 'blur'
+                            ? '1px dashed rgba(56, 189, 248, 0.4)'
                             : '1px dashed rgba(100, 116, 139, 0.4)'
                           : 'none',
                       boxShadow: 'none',
                     }}
                     tabIndex={0}
                     role="region"
-                    aria-label={`Zone de focus ${f.name || idx + 1}`}
+                    aria-label={`Zone ${f.mode === 'blur' ? 'de flou' : 'de focus'} ${f.name || idx + 1}`}
                     onKeyDown={(e) => {
                       if (
                         isActive &&
