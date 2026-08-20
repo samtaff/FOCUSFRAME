@@ -1,17 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Dark Slate Background Tile -->
+  <!-- Rounded dark slate tile (bg-slate-900 / rounded-lg) -->
   <rect width="32" height="32" rx="8" fill="#0f172a"/>
   
-  <!-- Inner Framed Grid -->
-  <rect x="3.5" y="3.5" width="25" height="25" rx="5.5" stroke="#334155" stroke-width="1.2" fill="#1e293b" fill-opacity="0.5"/>
-  
-  <!-- Focus Target Ring & Glow -->
-  <circle cx="16" cy="16" r="6" stroke="#ef4444" stroke-width="1.8" fill="#ef4444" fill-opacity="0.2"/>
-  <circle cx="16" cy="16" r="2" fill="#ffffff"/>
-  
-  <!-- Precision Reticle Corners -->
-  <path d="M9.5 12.5V9.5H12.5" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M22.5 12.5V9.5H19.5" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M9.5 19.5V22.5H12.5" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M22.5 19.5V22.5H19.5" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Lucide Focus Icon in crisp white (text-white) -->
+  <g transform="translate(4, 4)" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+    <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+  </g>
 </svg>
