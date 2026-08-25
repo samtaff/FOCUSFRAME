@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Crosshair,
+  SquareDashed,
   GripHorizontal,
   GripVertical,
   Move,
@@ -32,6 +33,9 @@ interface PhotoshopToolbarProps {
   screenH?: number;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   onSaveAs?: () => void;
+  onPreviewExport?: () => void;
+  showHandles?: boolean;
+  onToggleShowHandles?: () => void;
   isHandToolActive?: boolean;
   onToggleHandTool?: () => void;
 }
@@ -51,6 +55,9 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
   screenW = 204,
   screenH = 450,
   onSaveAs,
+  onPreviewExport,
+  showHandles = true,
+  onToggleShowHandles,
   isHandToolActive = false,
   onToggleHandTool,
 }) => {
@@ -641,8 +648,25 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
         {activeFocus.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
       </button>
 
-      {/* Save As button */}
-      {onSaveAs && (
+      {/* Toggle Handles & Guides ON/OFF */}
+      {onToggleShowHandles && (
+        <button
+          type="button"
+          id="ps-tool-toggle-handles"
+          onClick={onToggleShowHandles}
+          title={showHandles ? 'Masquer les poignées & repères pointillés' : 'Afficher les poignées & repères'}
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
+            showHandles
+              ? 'text-slate-700 hover:bg-slate-100'
+              : 'bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs'
+          }`}
+        >
+          <SquareDashed className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      {/* Preview and Save As buttons */}
+      {(onPreviewExport || onSaveAs) && (
         <>
           <div
             className={
@@ -651,15 +675,28 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
                 : 'w-5 h-[1px] bg-black/[0.08] my-0.5'
             }
           />
-          <button
-            type="button"
-            id="ps-tool-save-as"
-            onClick={onSaveAs}
-            title="Enregistrer sous... (PNG HD)"
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-700 hover:bg-slate-900 hover:text-white transition-all cursor-pointer active:scale-95 shadow-2xs"
-          >
-            <FolderDown className="w-3.5 h-3.5" />
-          </button>
+          {onPreviewExport && (
+            <button
+              type="button"
+              id="ps-tool-preview-export"
+              onClick={onPreviewExport}
+              title="Aperçu grand format avant export"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all cursor-pointer active:scale-95 shadow-2xs"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onSaveAs && (
+            <button
+              type="button"
+              id="ps-tool-save-as"
+              onClick={onSaveAs}
+              title="Enregistrer sous... (PNG HD)"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-700 hover:bg-slate-900 hover:text-white transition-all cursor-pointer active:scale-95 shadow-2xs"
+            >
+              <FolderDown className="w-3.5 h-3.5" />
+            </button>
+          )}
         </>
       )}
     </div>

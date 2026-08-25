@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { PreviewCanvas } from './components/PreviewCanvas';
 import { ControlPanel } from './components/ControlPanel';
 import { PhotoshopToolbar } from './components/PhotoshopToolbar';
+import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { FrameSettings, FocusRect, GuideLine } from './types';
 import { SAMPLE_IMAGES, GRADIENT_PRESETS } from './presets';
 import { toPng, toBlob } from 'html-to-image';
@@ -22,6 +23,8 @@ import {
   Columns,
   Trash2,
   Hand,
+  Eye,
+  SquareDashed,
 } from 'lucide-react';
 
 const INITIAL_FOCUS_1: FocusRect = {
@@ -87,7 +90,9 @@ export default function App() {
   const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
   const [isHandToolActive, setIsHandToolActive] = useState<boolean>(false);
   const [showRulers, setShowRulers] = useState<boolean>(true);
+  const [showHandles, setShowHandles] = useState<boolean>(true);
   const [guides, setGuides] = useState<GuideLine[]>([]);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
 
   const previewFrameRef = useRef<HTMLDivElement>(null);
   const stageContainerRef = useRef<HTMLDivElement>(null);
@@ -509,6 +514,7 @@ export default function App() {
         const pad = padBase * effectiveScale;
         const innerW = innerWBase * effectiveScale;
         const innerH = innerHBase * effectiveScale;
+        const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
 
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(frameW);
@@ -577,120 +583,99 @@ export default function App() {
           ctx.restore();
         }
 
-        // 3. Draw Base Image with Bicubic High Quality and seamless EvenOdd Dimming Veil
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(pad, pad, innerW, innerH, sRadius);
-        ctx.clip();
+        // 3. Composite Screenshot (Base Image + Focus Brightness + Blur Zones) onto an offscreen canvas
+        const screenCompCanvas = document.createElement('canvas');
+        screenCompCanvas.width = Math.max(1, Math.round(innerW));
+        screenCompCanvas.height = Math.max(1, Math.round(innerH));
+        const scCtx = screenCompCanvas.getContext('2d', { willReadFrequently: true });
 
-        // Draw Base Image
-        ctx.drawImage(img, pad, pad, innerW, innerH);
+        if (scCtx) {
+          scCtx.imageSmoothingEnabled = true;
+          scCtx.imageSmoothingQuality = 'high';
 
-        // Draw Dimming Veil over screenshot: cut out ONLY active FOCUS (non-blur) zones so focus zones stay 100% bright
-        const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
-        const focusCutoutZones = allFocuses.filter((f) => f.enabled && f.mode !== 'blur');
+          // A. Draw base clean image
+          scCtx.drawImage(img, 0, 0, innerW, innerH);
 
-        if (focusCutoutZones.length > 0 && settings.screenshotOpacity < 1.0) {
-          ctx.beginPath();
-          // Outer bounds of screenshot with bleed to prevent subpixel edge lines
-          ctx.rect(pad - 2, pad - 2, innerW + 4, innerH + 4);
+          // B. Draw Dimming Veil: cut out ONLY active FOCUS (non-blur) zones so focus zones stay 100% bright
+          const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
+          const focusCutoutZones = allFocuses.filter((f) => f.enabled && f.mode !== 'blur');
 
-          // Cutout only for active Focus zones
-          for (const f of focusCutoutZones) {
-            const imgFocusX = pad + (innerW * f.x) / 100;
-            const imgFocusY = pad + (innerH * f.y) / 100;
-            const imgFocusW = (innerW * f.width) / 100;
-            const imgFocusH = (innerH * f.height) / 100;
+          if (focusCutoutZones.length > 0 && settings.screenshotOpacity < 1.0) {
+            scCtx.beginPath();
+            // Outer bounds with bleed
+            scCtx.rect(-2, -2, innerW + 4, innerH + 4);
 
-            let fr = Math.min(imgFocusH / 2, (f.radius || 12) * effectiveScale);
-            if (f.shape === 'pill' || f.shape === 'circle') {
-              fr = Math.min(imgFocusW, imgFocusH) / 2;
-            } else if (f.shape === 'rectangle') {
-              fr = 0;
+            for (const f of focusCutoutZones) {
+              const imgFocusX = (innerW * f.x) / 100;
+              const imgFocusY = (innerH * f.y) / 100;
+              const imgFocusW = (innerW * f.width) / 100;
+              const imgFocusH = (innerH * f.height) / 100;
+
+              let fr = Math.min(imgFocusH / 2, (f.radius || 12) * effectiveScale);
+              if (f.shape === 'pill' || f.shape === 'circle') {
+                fr = Math.min(imgFocusW, imgFocusH) / 2;
+              } else if (f.shape === 'rectangle') {
+                fr = 0;
+              }
+
+              if (f.shape === 'circle') {
+                scCtx.moveTo(imgFocusX + imgFocusW, imgFocusY + imgFocusH / 2);
+                scCtx.ellipse(
+                  imgFocusX + imgFocusW / 2,
+                  imgFocusY + imgFocusH / 2,
+                  imgFocusW / 2,
+                  imgFocusH / 2,
+                  0,
+                  0,
+                  Math.PI * 2
+                );
+              } else {
+                scCtx.roundRect(imgFocusX, imgFocusY, imgFocusW, imgFocusH, fr);
+              }
             }
 
-            if (f.shape === 'circle') {
-              ctx.moveTo(imgFocusX + imgFocusW, imgFocusY + imgFocusH / 2);
-              ctx.ellipse(
-                imgFocusX + imgFocusW / 2,
-                imgFocusY + imgFocusH / 2,
-                imgFocusW / 2,
-                imgFocusH / 2,
-                0,
-                0,
-                Math.PI * 2
-              );
-            } else {
-              ctx.roundRect(imgFocusX, imgFocusY, imgFocusW, imgFocusH, fr);
-            }
+            scCtx.fillStyle = settings.dimmingType === 'light' 
+              ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
+              : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
+            scCtx.fill('evenodd');
           }
 
-          ctx.fillStyle = settings.dimmingType === 'light' 
-            ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
-            : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
-          ctx.fill('evenodd');
-        }
-
-        // Draw Selective Localized Blur Zones (Clean localized Gaussian blur, pure and artifact-free)
-        const blurZones = allFocuses.filter((f) => f.enabled && f.mode === 'blur');
-        if (blurZones.length > 0) {
-          const nw = img.naturalWidth || innerW;
-          const nh = img.naturalHeight || innerH;
-
+          // C. Draw Selective Localized Blur Zones (Blurs the composited screenshot at that location: bright if in focus, dimmed if outside)
+          const blurZones = allFocuses.filter((f) => f.enabled && f.mode === 'blur');
           for (const f of blurZones) {
-            const bExactX = pad + (innerW * f.x) / 100;
-            const bExactY = pad + (innerH * f.y) / 100;
+            const bExactX = (innerW * f.x) / 100;
+            const bExactY = (innerH * f.y) / 100;
             const bExactW = (innerW * f.width) / 100;
             const bExactH = (innerH * f.height) / 100;
             if (bExactW <= 1 || bExactH <= 1) continue;
 
             const blurPx = Math.max(1, Math.round((f.blurAmount ?? 10) * (effectiveScale / 1.5 || 1)));
 
-            // Compute localized source crop bounds with a generous margin that stays strictly in the neighborhood
-            const sx = (f.x / 100) * nw;
-            const sy = (f.y / 100) * nh;
-            const sw = (f.width / 100) * nw;
-            const sh = (f.height / 100) * nh;
-
-            const bleedOut = Math.max(20, blurPx * 3);
-            const bleedSrcX = bleedOut * (nw / innerW);
-            const bleedSrcY = bleedOut * (nh / innerH);
-
-            const cropX0 = Math.max(0, sx - bleedSrcX);
-            const cropY0 = Math.max(0, sy - bleedSrcY);
-            const cropX1 = Math.min(nw, sx + sw + bleedSrcX);
-            const cropY1 = Math.min(nh, sy + sh + bleedSrcY);
+            // Extract localized patch from the composited screenshot with bleed
+            const bleed = Math.max(24, Math.round(blurPx * 3));
+            const cropX0 = Math.max(0, bExactX - bleed);
+            const cropY0 = Math.max(0, bExactY - bleed);
+            const cropX1 = Math.min(innerW, bExactX + bExactW + bleed);
+            const cropY1 = Math.min(innerH, bExactY + bExactH + bleed);
             const cropW = cropX1 - cropX0;
             const cropH = cropY1 - cropY0;
-
             if (cropW <= 1 || cropH <= 1) continue;
 
-            const patchW = Math.round(cropW * (innerW / nw));
-            const patchH = Math.round(cropH * (innerH / nh));
-
             const patchCanvas = document.createElement('canvas');
-            patchCanvas.width = patchW;
-            patchCanvas.height = patchH;
+            patchCanvas.width = Math.round(cropW);
+            patchCanvas.height = Math.round(cropH);
             const pCtx = patchCanvas.getContext('2d');
             if (!pCtx) continue;
 
             pCtx.imageSmoothingEnabled = true;
             pCtx.imageSmoothingQuality = 'high';
-            // Draw clean source crop
-            pCtx.drawImage(img, cropX0, cropY0, cropW, cropH, 0, 0, patchW, patchH);
+            // Draw from composited screenshot (where focus areas are bright and background is dimmed)
+            pCtx.drawImage(screenCompCanvas, cropX0, cropY0, cropW, cropH, 0, 0, cropW, cropH);
 
-            // Apply exact screenshot opacity/dimming to the patch so the blur zone matches surrounding screenshot perfectly
-            if (settings.screenshotOpacity < 1.0) {
-              pCtx.fillStyle = settings.dimmingType === 'light'
-                ? `rgba(255, 255, 255, ${1 - settings.screenshotOpacity})`
-                : `rgba(0, 0, 0, ${1 - settings.screenshotOpacity})`;
-              pCtx.fillRect(0, 0, patchW, patchH);
-            }
-
-            // Create blurred version of the patch
+            // Blur the patch
             const blurredPatchCanvas = document.createElement('canvas');
-            blurredPatchCanvas.width = patchW;
-            blurredPatchCanvas.height = patchH;
+            blurredPatchCanvas.width = Math.round(cropW);
+            blurredPatchCanvas.height = Math.round(cropH);
             const bpCtx = blurredPatchCanvas.getContext('2d');
             if (!bpCtx) continue;
 
@@ -700,12 +685,6 @@ export default function App() {
             bpCtx.drawImage(patchCanvas, 0, 0);
             bpCtx.filter = 'none';
 
-            // Calculate destination position of patch
-            const patchOffsetX = (sx - cropX0) * (innerW / nw);
-            const patchOffsetY = (sy - cropY0) * (innerH / nh);
-            const drawDestX = bExactX - patchOffsetX;
-            const drawDestY = bExactY - patchOffsetY;
-
             let bRadius = Math.min(bExactH / 2, (f.radius || 8) * effectiveScale);
             if (f.shape === 'pill' || f.shape === 'circle') {
               bRadius = Math.min(bExactW, bExactH) / 2;
@@ -713,10 +692,10 @@ export default function App() {
               bRadius = 0;
             }
 
-            ctx.save();
-            ctx.beginPath();
+            scCtx.save();
+            scCtx.beginPath();
             if (f.shape === 'circle') {
-              ctx.ellipse(
+              scCtx.ellipse(
                 bExactX + bExactW / 2,
                 bExactY + bExactH / 2,
                 bExactW / 2,
@@ -726,26 +705,31 @@ export default function App() {
                 Math.PI * 2
               );
             } else {
-              ctx.roundRect(bExactX, bExactY, bExactW, bExactH, bRadius);
+              scCtx.roundRect(bExactX, bExactY, bExactW, bExactH, bRadius);
             }
-            ctx.clip();
+            scCtx.clip();
 
-            ctx.globalAlpha = f.blurOpacity ?? 1.0;
-            ctx.drawImage(blurredPatchCanvas, drawDestX, drawDestY, patchW, patchH);
+            scCtx.globalAlpha = f.blurOpacity ?? 1.0;
+            scCtx.drawImage(blurredPatchCanvas, cropX0, cropY0);
 
             if (f.blurStyle === 'dark') {
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-              ctx.fill();
+              scCtx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+              scCtx.fill();
             } else if (f.blurStyle === 'frost') {
-              ctx.fillStyle = 'rgba(255, 255, 255, 0.30)';
-              ctx.fill();
+              scCtx.fillStyle = 'rgba(255, 255, 255, 0.30)';
+              scCtx.fill();
             }
-
-            ctx.restore();
+            scCtx.restore();
           }
-        }
 
-        ctx.restore();
+          // D. Draw the composited screenshot onto the main frame canvas with rounded corner clipping
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(pad, pad, innerW, innerH, sRadius);
+          ctx.clip();
+          ctx.drawImage(screenCompCanvas, pad, pad, innerW, innerH);
+          ctx.restore();
+        }
 
         // 4. Draw Focus Borders with exact coordinates & crisp stroke if enabled
         for (const f of allFocuses) {
@@ -1054,6 +1038,15 @@ export default function App() {
         screenH={screenDimensions.height}
         containerRef={stageContainerRef}
         onSaveAs={() => handleExportPng(true)}
+        onPreviewExport={() => setIsPreviewModalOpen(true)}
+        showHandles={showHandles}
+        onToggleShowHandles={() => {
+          setShowHandles((prev) => {
+            const next = !prev;
+            showToast(next ? 'Poignées & repères activés' : 'Poignées & repères masqués (rendu épuré)', 'info');
+            return next;
+          });
+        }}
         isHandToolActive={isHandToolActive}
         onToggleHandTool={handleToggleHandTool}
       />
@@ -1076,6 +1069,44 @@ export default function App() {
 
             {/* Stage Toolbar: Zoom, Rulers & Guides (macOS Segmented Style) */}
             <div className="flex flex-wrap items-center gap-1.5 macos-segmented p-1 shadow-2xs">
+              {/* Quick Preview Modal Button */}
+              <button
+                type="button"
+                id="btn-quick-preview-modal"
+                onClick={() => setIsPreviewModalOpen(true)}
+                title="Aperçu du rendu final avant export (Taille réelle HD)"
+                className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md font-medium text-blue-700 hover:text-blue-900 hover:bg-blue-50/80 transition-all cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5 text-blue-600" />
+                <span className="font-semibold">Aperçu HD</span>
+              </button>
+
+              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+
+              {/* Toggle Zone Handles & Outlines Button (Focus & Blur) */}
+              <button
+                type="button"
+                id="btn-toggle-handles"
+                onClick={() => {
+                  setShowHandles((prev) => {
+                    const nextVal = !prev;
+                    showToast(nextVal ? 'Poignées & repères affichés' : 'Poignées & repères masqués (rendu épuré)', 'info');
+                    return nextVal;
+                  });
+                }}
+                title={showHandles ? 'Masquer toutes les poignées et contours pointillés' : 'Afficher les poignées de contrôle'}
+                className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  showHandles
+                    ? 'macos-segmented-item-active text-slate-900 font-semibold'
+                    : 'text-amber-800 bg-amber-100 hover:bg-amber-200/80 font-bold border border-amber-300 shadow-2xs'
+                }`}
+              >
+                <SquareDashed className="w-3.5 h-3.5" />
+                <span>{showHandles ? 'Poignées ON' : 'Poignées OFF'}</span>
+              </button>
+
+              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+
               {/* Toggle Rulers Button */}
               <button
                 type="button"
@@ -1251,6 +1282,7 @@ export default function App() {
                 isSpacePressed={isSpacePressed}
                 isHandToolActive={isHandToolActive}
                 showRulers={showRulers}
+                showHandles={showHandles}
                 guides={guides}
                 onUpdateGuides={setGuides}
               />
@@ -1282,6 +1314,15 @@ export default function App() {
             onImportImage={handleImportImage}
             onSelectSample={handleSelectSample}
             onExport={handleExportPng}
+            onPreviewExport={() => setIsPreviewModalOpen(true)}
+            showHandles={showHandles}
+            onToggleShowHandles={() => {
+              setShowHandles((prev) => {
+                const next = !prev;
+                showToast(next ? 'Poignées & repères affichés' : 'Poignées & repères masqués (rendu épuré)', 'info');
+                return next;
+              });
+            }}
             onCopyClipboard={handleCopyClipboard}
             onReset={handleReset}
             isExporting={isExporting}
@@ -1289,6 +1330,20 @@ export default function App() {
           />
         </section>
       </main>
+
+      {/* High-Resolution Export Preview Modal */}
+      <ExportPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        onExport={async (saveAs) => {
+          await handleExportPng(saveAs);
+          setIsPreviewModalOpen(false);
+        }}
+        onCopyClipboard={handleCopyClipboard}
+        generatePreviewDataUrl={renderFallbackCanvas}
+        settings={settings}
+        copiedSuccess={copiedSuccess}
+      />
 
       {/* Toast Notification */}
       {toastMessage && (

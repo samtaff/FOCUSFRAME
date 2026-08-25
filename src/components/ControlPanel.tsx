@@ -38,6 +38,7 @@ import {
   Trash2,
   Droplet,
   EyeOff,
+  SquareDashed,
 } from 'lucide-react';
 import { PreciseNumberInput } from './PreciseNumberInput';
 import { FocusRect } from '../types';
@@ -55,6 +56,9 @@ interface ControlPanelProps {
   onImportImage: (file: File) => void;
   onSelectSample: (sampleId: string) => void;
   onExport: (chooseDirectory?: boolean) => void;
+  onPreviewExport?: () => void;
+  showHandles?: boolean;
+  onToggleShowHandles?: () => void;
   onCopyClipboard: () => void;
   onReset: () => void;
   isExporting: boolean;
@@ -74,6 +78,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onImportImage,
   onSelectSample,
   onExport,
+  onPreviewExport,
+  showHandles = true,
+  onToggleShowHandles,
   onCopyClipboard,
   onReset,
   isExporting,
@@ -756,9 +763,27 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               {/* Multi-Zone Focus Header & Selector */}
               <div className="flex flex-col gap-2 bg-white/90 p-2.5 rounded-xl border border-black/10 shadow-2xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    Zones actives ({allFocuses.length})
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Zones actives ({allFocuses.length})
+                    </span>
+                    {onToggleShowHandles && (
+                      <button
+                        type="button"
+                        id="btn-toggle-all-handles-header"
+                        onClick={onToggleShowHandles}
+                        title={showHandles ? 'Masquer toutes les poignées sur la scène' : 'Afficher les poignées sur la scène'}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 border transition-all cursor-pointer ${
+                          showHandles
+                            ? 'bg-slate-100 text-slate-700 border-black/10 hover:bg-slate-200'
+                            : 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                        }`}
+                      >
+                        <SquareDashed className="w-2.5 h-2.5" />
+                        <span>{showHandles ? 'Poignées ON' : 'Poignées OFF'}</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5">
                     {onAddFocusZone && (
                       <button
@@ -1786,6 +1811,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Options de poignées & repères visuels (Pointillés) */}
+                <div className="pt-3 border-t border-black/[0.06] space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="toggle-zone-handles" className="font-semibold text-slate-800 cursor-pointer">
+                        Poignées & Repères pointillés
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        (Guides d'édition)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="toggle-zone-handles"
+                        type="checkbox"
+                        checked={focus.showHandles !== false}
+                        onChange={(e) => onUpdateFocus({ showHandles: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-slate-900 shadow-inner"></div>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Désactivez pour masquer les poignées de redimensionnement et supprimer tout trait pointillé autour de la zone (notamment en mode flou).
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
@@ -1984,6 +2036,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
 
           <div className="space-y-2.5 pt-1">
+            {/* Preview Before Export Button */}
+            {onPreviewExport && (
+              <button
+                id="btn-open-preview-modal"
+                type="button"
+                onClick={onPreviewExport}
+                className="w-full py-2.5 px-3 rounded-xl border border-blue-500/30 bg-blue-50 hover:bg-blue-100 text-blue-900 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-2xs active:scale-[0.99]"
+              >
+                <Eye className="w-4 h-4 text-blue-600" />
+                <span>👁️ Prévisualiser en grand avant export</span>
+              </button>
+            )}
+
             {/* Primary macOS Button: Choose Destination Directory & Save As */}
             <button
               id="btn-save-as-folder"

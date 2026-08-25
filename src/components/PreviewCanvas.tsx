@@ -16,6 +16,7 @@ interface PreviewCanvasProps {
   isSpacePressed?: boolean;
   isHandToolActive?: boolean;
   showRulers?: boolean;
+  showHandles?: boolean;
   guides?: GuideLine[];
   onUpdateGuides?: (guides: GuideLine[]) => void;
 }
@@ -33,6 +34,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   isSpacePressed = false,
   isHandToolActive = false,
   showRulers = true,
+  showHandles = true,
   guides = [],
   onUpdateGuides,
 }) => {
@@ -675,7 +677,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               </svg>
 
               {/* Visual Magnetic Guidelines (Shown when centered or snapped for active focus) */}
-              {!isExporting && activeFocus.enabled && (
+              {!isExporting && showHandles && activeFocus.enabled && activeFocus.showHandles !== false && (
                 <>
                   {/* Horizontal Center Guide (Vertical axis line at X = 50%) */}
                   {isHorizontallyCentered && (
@@ -699,6 +701,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               {allFocuses.map((f, idx) => {
                 if (!f.enabled) return null;
                 const isActive = idx === activeFocusIndex;
+                const showHandlesForZone = showHandles && f.showHandles !== false;
 
                 return (
                   <div
@@ -711,7 +714,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                         ? 'cursor-grabbing'
                         : 'cursor-grab'
                     } ${
-                      !isActive && !isExporting
+                      !isActive && !isExporting && showHandlesForZone && f.mode !== 'blur'
                         ? 'hover:ring-1 hover:ring-blue-400/60'
                         : ''
                     }`}
@@ -730,12 +733,14 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                           : `${f.radius}px`,
                       border:
                         !f.showBorder && !isExporting
-                          ? isActive
+                          ? !showHandlesForZone
+                            ? 'none'
+                            : isActive
                             ? f.mode === 'blur'
                               ? '1.5px dashed rgba(2, 132, 199, 0.8)'
                               : '1px dashed rgba(204, 0, 0, 0.6)'
                             : f.mode === 'blur'
-                            ? '1px dashed rgba(56, 189, 248, 0.4)'
+                            ? 'none'
                             : '1px dashed rgba(100, 116, 139, 0.4)'
                           : 'none',
                       boxShadow: 'none',
@@ -772,8 +777,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     }}
                     onPointerDown={(e) => handlePointerDown(e, 'move', idx)}
                   >
-                    {/* Subtle Inner Crosshair on active focus zone */}
-                    {!isExporting && isActive && (
+                    {/* Subtle Inner Crosshair on active focus zone (only when handles are enabled) */}
+                    {!isExporting && isActive && showHandlesForZone && (
                       <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-[inherit]">
                         <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0 border-t border-dashed border-slate-500/40 opacity-70" />
                         <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0 border-l border-dashed border-slate-500/40 opacity-70" />
@@ -781,8 +786,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       </div>
                     )}
 
-                    {/* Resize Handles (Only for active focus) */}
-                    {!isExporting && isActive && f.showHandles !== false && (
+                    {/* Resize Handles (Only for active focus when handles enabled) */}
+                    {!isExporting && isActive && showHandlesForZone && (
                       <>
                         {/* Corners */}
                         <div
