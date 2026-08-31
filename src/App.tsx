@@ -73,6 +73,102 @@ const DEFAULT_SETTINGS: FrameSettings = {
   exportFileName: 'focusframe-export',
 };
 
+// Helper to parse CSS linear-gradient into HTML5 CanvasGradient
+function createLinearGradientFromCss(
+  ctx: CanvasRenderingContext2D,
+  cssGradient: string,
+  width: number,
+  height: number
+): CanvasGradient | string {
+  try {
+    const match = cssGradient.match(/linear-gradient\s*\((.*)\)/i);
+    if (!match) return '#ffffff';
+
+    const content = match[1].trim();
+    const tokens: string[] = [];
+    let current = '';
+    let parenDepth = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      if (char === '(') parenDepth++;
+      else if (char === ')') parenDepth--;
+
+      if (char === ',' && parenDepth === 0) {
+        tokens.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) tokens.push(current.trim());
+
+    if (tokens.length < 2) return '#ffffff';
+
+    let angleDeg = 135;
+    let stopStartIndex = 0;
+
+    const firstToken = tokens[0].toLowerCase();
+    if (firstToken.includes('deg')) {
+      angleDeg = parseFloat(firstToken) || 135;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to top right') || firstToken.includes('to right top')) {
+      angleDeg = 45;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to bottom right') || firstToken.includes('to right bottom')) {
+      angleDeg = 135;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to bottom left') || firstToken.includes('to left bottom')) {
+      angleDeg = 225;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to top left') || firstToken.includes('to left top')) {
+      angleDeg = 315;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to top')) {
+      angleDeg = 0;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to right')) {
+      angleDeg = 90;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to bottom')) {
+      angleDeg = 180;
+      stopStartIndex = 1;
+    } else if (firstToken.includes('to left')) {
+      angleDeg = 270;
+      stopStartIndex = 1;
+    }
+
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    const cx = width / 2;
+    const cy = height / 2;
+    const length = Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad));
+    const halfLen = length / 2;
+
+    const x0 = cx - Math.cos(rad) * halfLen;
+    const y0 = cy - Math.sin(rad) * halfLen;
+    const x1 = cx + Math.cos(rad) * halfLen;
+    const y1 = cy + Math.sin(rad) * halfLen;
+
+    const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+
+    const stopTokens = tokens.slice(stopStartIndex);
+    stopTokens.forEach((token, idx) => {
+      const parts = token.trim().split(/\s+(?=[0-9%]+$)/);
+      const color = parts[0];
+      let offset = idx / Math.max(1, stopTokens.length - 1);
+      if (parts.length > 1 && parts[1].endsWith('%')) {
+        offset = parseFloat(parts[1]) / 100;
+      }
+      offset = Math.max(0, Math.min(1, offset));
+      grad.addColorStop(offset, color);
+    });
+
+    return grad;
+  } catch (err) {
+    console.warn('Could not parse CSS gradient, using fallback:', err);
+    return '#ffffff';
+  }
+}
+
 export default function App() {
   const [settings, setSettings] = useState<FrameSettings>(DEFAULT_SETTINGS);
   const [currentImageSrc, setCurrentImageSrc] = useState<string>(SAMPLE_IMAGES[0].dataUrl);
@@ -539,19 +635,26 @@ export default function App() {
           ctx.restore();
         } else if (settings.bgType === 'gradient') {
           ctx.save();
-          const gradient = ctx.createLinearGradient(0, 0, frameW, frameH);
-          gradient.addColorStop(0, '#10b981');
-          gradient.addColorStop(1, '#059669');
-          ctx.fillStyle = gradient;
+          const gradientStyle = createLinearGradientFromCss(
+            ctx,
+            settings.bgGradient || 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            frameW,
+            frameH
+          );
+          ctx.fillStyle = gradientStyle;
           ctx.beginPath();
           ctx.roundRect(0, 0, frameW, frameH, (settings.borderRadius || 0) * effectiveScale);
           ctx.fill();
           ctx.restore();
         }
 
-        // 2. Draw Screenshot Drop Shadow if enabled (inset caster path by 2px so it never peeks out at screenshot borders)
+        // 2. Draw Screenshot Drop Shadow if enabled (exact boundary matching CSS box-shadow)
         const sRadius = (settings.screenshotRadius || 0) * effectiveScale;
-        if (settings.shadowSettings ? settings.shadowSettings.enabled : (settings.shadow && settings.shadow !== 'none')) {
+        const shadowEnabled = settings.shadowSettings
+          ? settings.shadowSettings.enabled
+          : settings.shadow && settings.shadow !== 'none';
+
+        if (shadowEnabled) {
           const shadowConf = settings.shadowSettings || {
             color: '#000000',
             opacity: 0.50,
@@ -559,26 +662,20 @@ export default function App() {
             offsetY: 3,
             blur: 9,
           };
-          const hex = shadowConf.color.replace('#', '');
+          const hex = (shadowConf.color || '#000000').replace('#', '');
           const r = parseInt(hex.substring(0, 2), 16) || 0;
           const g = parseInt(hex.substring(2, 4), 16) || 0;
           const b = parseInt(hex.substring(4, 6), 16) || 0;
+          const opacity = shadowConf.opacity ?? 0.50;
           
           ctx.save();
-          ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${shadowConf.opacity})`;
+          ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${opacity})`;
           ctx.shadowOffsetX = (shadowConf.offsetX ?? 2) * effectiveScale;
           ctx.shadowOffsetY = (shadowConf.offsetY ?? 3) * effectiveScale;
           ctx.shadowBlur = (shadowConf.blur ?? 9) * effectiveScale;
           ctx.beginPath();
-          const insetPad = 2 * effectiveScale;
-          ctx.roundRect(
-            pad + insetPad,
-            pad + insetPad,
-            Math.max(1, innerW - insetPad * 2),
-            Math.max(1, innerH - insetPad * 2),
-            Math.max(0, sRadius - insetPad)
-          );
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
+          ctx.roundRect(pad, pad, innerW, innerH, sRadius);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 1.0)`;
           ctx.fill();
           ctx.restore();
         }
@@ -593,13 +690,57 @@ export default function App() {
           scCtx.imageSmoothingEnabled = true;
           scCtx.imageSmoothingQuality = 'high';
 
-          // A. Draw base clean image
-          scCtx.drawImage(img, 0, 0, innerW, innerH);
-
-          // B. Draw Dimming Veil: cut out ONLY active FOCUS (non-blur) zones so focus zones stay 100% bright
-          const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
           const focusCutoutZones = allFocuses.filter((f) => f.enabled && f.mode !== 'blur');
 
+          // A. Draw base image with optional background blur
+          if (settings.backgroundBlur && settings.backgroundBlur > 0) {
+            const bgBlurPx = (settings.backgroundBlur * effectiveScale) / 2;
+            scCtx.save();
+            scCtx.filter = `blur(${bgBlurPx}px)`;
+            scCtx.drawImage(img, 0, 0, innerW, innerH);
+            scCtx.restore();
+
+            // Draw crisp unblurred cutouts for active focus zones
+            if (focusCutoutZones.length > 0) {
+              scCtx.save();
+              scCtx.beginPath();
+              for (const f of focusCutoutZones) {
+                const imgFocusX = (innerW * f.x) / 100;
+                const imgFocusY = (innerH * f.y) / 100;
+                const imgFocusW = (innerW * f.width) / 100;
+                const imgFocusH = (innerH * f.height) / 100;
+
+                let fr = Math.min(imgFocusH / 2, (f.radius || 12) * effectiveScale);
+                if (f.shape === 'pill' || f.shape === 'circle') {
+                  fr = Math.min(imgFocusW, imgFocusH) / 2;
+                } else if (f.shape === 'rectangle') {
+                  fr = 0;
+                }
+
+                if (f.shape === 'circle') {
+                  scCtx.moveTo(imgFocusX + imgFocusW, imgFocusY + imgFocusH / 2);
+                  scCtx.ellipse(
+                    imgFocusX + imgFocusW / 2,
+                    imgFocusY + imgFocusH / 2,
+                    imgFocusW / 2,
+                    imgFocusH / 2,
+                    0,
+                    0,
+                    Math.PI * 2
+                  );
+                } else {
+                  scCtx.roundRect(imgFocusX, imgFocusY, imgFocusW, imgFocusH, fr);
+                }
+              }
+              scCtx.clip();
+              scCtx.drawImage(img, 0, 0, innerW, innerH);
+              scCtx.restore();
+            }
+          } else {
+            scCtx.drawImage(img, 0, 0, innerW, innerH);
+          }
+
+          // B. Draw Dimming Veil: cut out ONLY active FOCUS (non-blur) zones so focus zones stay 100% bright
           if (focusCutoutZones.length > 0 && settings.screenshotOpacity < 1.0) {
             scCtx.beginPath();
             // Outer bounds with bleed
@@ -801,38 +942,13 @@ export default function App() {
     setIsExporting(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 60));
       const baseScale = settings.exportScale || 2;
-      const effectiveRatio = getHomotheticPixelRatio(baseScale);
-      let blob: Blob | null = null;
-
-      const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
-      const hasAnyBlur = allFocuses.some((f) => f.enabled && f.mode === 'blur');
-
-      // Primary: If any localized blur zone is enabled, direct Canvas generator renders pixel-perfect isolated blur without whole-image artifacts
-      if (hasAnyBlur) {
-        const dataUrl = await renderFallbackCanvas(baseScale);
-        const res = await fetch(dataUrl);
-        blob = await res.blob();
-      } else {
-        try {
-          blob = await toBlob(previewFrameRef.current, {
-            pixelRatio: effectiveRatio,
-            cacheBust: true,
-            style: {
-              transform: 'none',
-              background: settings.bgType === 'transparent' ? 'transparent' : undefined,
-              backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
-              backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
-            },
-          });
-        } catch (domErr) {
-          console.warn('html-to-image toBlob fallback to canvas:', domErr);
-          const dataUrl = await renderFallbackCanvas(baseScale);
-          const res = await fetch(dataUrl);
-          blob = await res.blob();
-        }
-      }
+      
+      // Generate pixel-perfect high resolution export using unified Canvas 2D engine
+      const dataUrl = await renderFallbackCanvas(baseScale);
+      const res = await fetch(dataUrl);
+      const blob: Blob = await res.blob();
 
       if (!blob) {
         throw new Error('Impossible de générer le fichier image');
@@ -928,36 +1044,12 @@ export default function App() {
     setIsExporting(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 60));
       const baseScale = settings.exportScale || 2;
-      const effectiveRatio = getHomotheticPixelRatio(baseScale);
-      let blob: Blob | null = null;
-
-      const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
-      const hasAnyBlur = allFocuses.some((f) => f.enabled && f.mode === 'blur');
-
-      if (hasAnyBlur) {
-        const dataUrl = await renderFallbackCanvas(baseScale);
-        const res = await fetch(dataUrl);
-        blob = await res.blob();
-      } else {
-        try {
-          blob = await toBlob(previewFrameRef.current, {
-            pixelRatio: effectiveRatio,
-            cacheBust: true,
-            style: {
-              transform: 'none',
-              background: settings.bgType === 'transparent' ? 'transparent' : undefined,
-              backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
-              backgroundImage: settings.bgType === 'transparent' ? 'none' : undefined,
-            },
-          });
-        } catch {
-          const dataUrl = await renderFallbackCanvas(baseScale);
-          const res = await fetch(dataUrl);
-          blob = await res.blob();
-        }
-      }
+      
+      const dataUrl = await renderFallbackCanvas(baseScale);
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
 
       if (blob && navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
