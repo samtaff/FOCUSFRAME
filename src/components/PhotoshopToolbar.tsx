@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FocusRect } from '../types';
+import { FocusRect, ArrowAnnotation } from '../types';
 import {
   Square,
   Circle,
@@ -18,6 +18,11 @@ import {
   Layers,
   ChevronRight,
   RotateCcw,
+  ArrowRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  Navigation,
 } from 'lucide-react';
 
 interface PhotoshopToolbarProps {
@@ -29,6 +34,12 @@ interface PhotoshopToolbarProps {
   onAddFocusZone?: () => void;
   onAddBlurZone?: () => void;
   onRemoveFocusZone?: (index: number) => void;
+  arrows?: ArrowAnnotation[];
+  activeArrowIndex?: number;
+  onAddArrow?: (presetAngle?: number) => void;
+  onUpdateArrow?: (updates: Partial<ArrowAnnotation>, targetIndex?: number) => void;
+  onSelectActiveArrow?: (index: number) => void;
+  onRemoveArrow?: (index: number) => void;
   screenW?: number;
   screenH?: number;
   containerRef?: React.RefObject<HTMLDivElement | null>;
@@ -52,6 +63,12 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
   onAddFocusZone,
   onAddBlurZone,
   onRemoveFocusZone,
+  arrows = [],
+  activeArrowIndex = 0,
+  onAddArrow,
+  onUpdateArrow,
+  onSelectActiveArrow,
+  onRemoveArrow,
   screenW = 204,
   screenH = 450,
   onSaveAs,
@@ -535,6 +552,27 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
       >
         <Circle className="w-3 h-3" />
       </button>
+
+      {/* Tool Arrow: Flèche Rouge d'annotation (40×16px) */}
+      {onAddArrow && (
+        <button
+          type="button"
+          id="ps-tool-add-arrow"
+          onClick={() => onAddArrow()}
+          title={
+            arrows.length > 0
+              ? `Flèches d'annotation (${arrows.length}) - Cliquez pour ajouter une flèche rouge (40×16px)`
+              : 'Ajouter une flèche rouge d\'annotation (40×16px)'
+          }
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer group active:scale-95 ${
+            arrows.length > 0 && arrows.some((a) => a.enabled)
+              ? 'bg-[#cc0000] text-white shadow-xs hover:bg-[#b30000]'
+              : 'text-[#cc0000] hover:bg-red-50'
+          }`}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       {/* Slim Divider */}
       <div

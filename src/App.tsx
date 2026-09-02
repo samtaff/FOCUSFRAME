@@ -3,8 +3,9 @@ import { PreviewCanvas } from './components/PreviewCanvas';
 import { ControlPanel } from './components/ControlPanel';
 import { PhotoshopToolbar } from './components/PhotoshopToolbar';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
-import { FrameSettings, FocusRect, GuideLine } from './types';
+import { FrameSettings, FocusRect, GuideLine, ArrowAnnotation } from './types';
 import { SAMPLE_IMAGES, GRADIENT_PRESETS } from './presets';
+import { drawArrowShape } from './utils/arrow';
 import { toPng, toBlob } from 'html-to-image';
 import {
   Focus,
@@ -25,6 +26,11 @@ import {
   Hand,
   Eye,
   SquareDashed,
+  ArrowRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  MousePointer,
 } from 'lucide-react';
 
 const INITIAL_FOCUS_1: FocusRect = {
@@ -67,6 +73,8 @@ const DEFAULT_SETTINGS: FrameSettings = {
   focus: INITIAL_FOCUS_1,
   focuses: [INITIAL_FOCUS_1],
   activeFocusIndex: 0,
+  arrows: [],
+  activeArrowIndex: 0,
   exportScale: 1,
   exportFormat: 'height_450',
   exportCustomHeight: 450,
@@ -535,16 +543,150 @@ export default function App() {
     showToast('Zone de focus dupliquée !', 'success');
   };
 
+  // Arrow Annotations Handlers
+  const handleAddArrow = (presetAngle?: number) => {
+    setSettings((prev) => {
+      const curArrows = prev.arrows ? [...prev.arrows] : [];
+      const newNum = curArrows.length + 1;
+
+      // Smart positioning: place pointing to the active focus or centered
+      const activeF =
+        prev.focuses && prev.focuses.length > 0
+          ? prev.focuses[prev.activeFocusIndex ?? 0] || prev.focus
+          : prev.focus;
+
+      let defaultX = 65.0;
+      let defaultY = 50.0;
+      let defaultRotation = presetAngle !== undefined ? presetAngle : 180; // 180 = Left pointing arrow like user sample!
+
+      if (activeF && activeF.enabled) {
+        if (activeF.x > 35) {
+          // If zone is on right/center, arrow on right pointing left towards it
+          defaultX = Math.min(92, Math.max(10, activeF.x + activeF.width + 12));
+          defaultY = Math.min(90, Math.max(10, activeF.y + activeF.height / 2));
+          defaultRotation = 180; // Pointing left towards focus
+        } else {
+          // If zone is on left, arrow on right of it pointing left, or left pointing right
+          defaultX = Math.min(92, Math.max(10, activeF.x + activeF.width + 14));
+          defaultY = Math.min(90, Math.max(10, activeF.y + activeF.height / 2));
+          defaultRotation = 180;
+        }
+      }
+
+      if (presetAngle !== undefined) {
+        defaultRotation = presetAngle;
+      }
+
+      const newArrow: ArrowAnnotation = {
+        id: 'arrow-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: `Flèche ${newNum}`,
+        enabled: true,
+        x: Math.round(defaultX * 10) / 10,
+        y: Math.round(defaultY * 10) / 10,
+        size: 40,
+        thickness: 7,
+        headWidth: 16,
+        headLength: 15,
+        rotation: defaultRotation,
+        color: '#cc0000', // Rouge vif fixe 40x16px
+        opacity: 1.0,
+        hasShadow: false,
+        showHandles: false,
+        cornerRadius: 0,
+        roundedTail: true, // Départ arrondi demi-cercle
+      };
+
+      const updated = [...curArrows, newArrow];
+      return {
+        ...prev,
+        arrows: updated,
+        activeArrowIndex: updated.length - 1,
+      };
+    });
+    showToast('Flèche rouge ajoutée !', 'success');
+  };
+
+  const handleUpdateArrow = (updates: Partial<ArrowAnnotation>, targetIndex?: number) => {
+    setSettings((prev) => {
+      const curArrows = prev.arrows ? [...prev.arrows] : [];
+      if (curArrows.length === 0) return prev;
+      const idx = targetIndex !== undefined ? targetIndex : prev.activeArrowIndex ?? 0;
+      const safeIdx = Math.max(0, Math.min(curArrows.length - 1, idx));
+      curArrows[safeIdx] = { ...curArrows[safeIdx], ...updates };
+      return {
+        ...prev,
+        arrows: curArrows,
+      };
+    });
+  };
+
+  const handleSelectActiveArrow = (index: number) => {
+    setSettings((prev) => {
+      const curArrows = prev.arrows || [];
+      const safeIdx = Math.max(0, Math.min(Math.max(0, curArrows.length - 1), index));
+      return {
+        ...prev,
+        activeArrowIndex: safeIdx,
+      };
+    });
+  };
+
+  const handleRemoveArrow = (indexToRemove: number) => {
+    setSettings((prev) => {
+      const curArrows = prev.arrows ? [...prev.arrows] : [];
+      const updated = curArrows.filter((_, i) => i !== indexToRemove);
+      const nextActive = Math.max(
+        0,
+        Math.min(
+          Math.max(0, updated.length - 1),
+          (prev.activeArrowIndex ?? 0) >= indexToRemove
+            ? (prev.activeArrowIndex ?? 0) - 1
+            : (prev.activeArrowIndex ?? 0)
+        )
+      );
+      return {
+        ...prev,
+        arrows: updated,
+        activeArrowIndex: nextActive,
+      };
+    });
+    showToast('Flèche supprimée', 'info');
+  };
+
+  const handleDuplicateArrow = (indexToDup: number) => {
+    setSettings((prev) => {
+      const curArrows = prev.arrows ? [...prev.arrows] : [];
+      const source = curArrows[indexToDup] || curArrows[0];
+      if (!source) return prev;
+      const newNum = curArrows.length + 1;
+      const dup: ArrowAnnotation = {
+        ...source,
+        id: 'arrow-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: `Flèche ${newNum}`,
+        x: Math.min(92, source.x + 4),
+        y: Math.min(92, source.y + 4),
+      };
+      const updated = [...curArrows, dup];
+      return {
+        ...prev,
+        arrows: updated,
+        activeArrowIndex: updated.length - 1,
+      };
+    });
+    showToast('Flèche dupliquée !', 'success');
+  };
+
   const handleImportImage = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      showToast('Veuillez sélectionner un fichier image valide.', 'error');
+    const isImage = file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.svg');
+    if (!isImage) {
+      showToast('Veuillez sélectionner un fichier image valide (PNG, JPG, SVG, WebP...).', 'error');
       return;
     }
     const reader = new FileReader();
     reader.onload = (e) => {
       if (typeof e.target?.result === 'string') {
         setCurrentImageSrc(e.target.result);
-        showToast('Capture d\'écran importée avec succès !', 'success');
+        showToast('Image importée avec succès (format compatible) !', 'success');
       }
     };
     reader.readAsDataURL(file);
@@ -914,6 +1056,32 @@ export default function App() {
           }
         }
 
+        // 5. Draw Arrow Annotations (Pointeurs & Callout Arrows)
+        if (settings.arrows && settings.arrows.length > 0) {
+          for (const arrow of settings.arrows) {
+            if (!arrow.enabled) continue;
+            const arrowCenterX = pad + (innerW * arrow.x) / 100;
+            const arrowCenterY = pad + (innerH * arrow.y) / 100;
+
+            drawArrowShape(
+              ctx,
+              arrowCenterX,
+              arrowCenterY,
+              arrow.size || 40,
+              arrow.thickness || 7,
+              arrow.headWidth || 16,
+              arrow.headLength || 15,
+              arrow.rotation ?? 180,
+              arrow.color || '#cc0000',
+              arrow.opacity ?? 1.0,
+              arrow.hasShadow ?? false,
+              effectiveScale,
+              arrow.cornerRadius ?? 0,
+              arrow.roundedTail !== false
+            );
+          }
+        }
+
         resolve(canvas.toDataURL('image/png'));
       };
       img.onerror = () => reject(new Error('Image load failed'));
@@ -1126,6 +1294,12 @@ export default function App() {
         onAddFocusZone={handleAddFocusZone}
         onAddBlurZone={handleAddBlurZone}
         onRemoveFocusZone={handleRemoveFocusZone}
+        arrows={settings.arrows}
+        activeArrowIndex={settings.activeArrowIndex}
+        onAddArrow={handleAddArrow}
+        onUpdateArrow={handleUpdateArrow}
+        onSelectActiveArrow={handleSelectActiveArrow}
+        onRemoveArrow={handleRemoveArrow}
         screenW={screenDimensions.width}
         screenH={screenDimensions.height}
         containerRef={stageContainerRef}
@@ -1366,6 +1540,12 @@ export default function App() {
                 imageSrc={currentImageSrc}
                 onUpdateFocus={handleUpdateFocus}
                 onSelectActiveFocus={handleSelectActiveFocus}
+                arrows={settings.arrows}
+                activeArrowIndex={settings.activeArrowIndex}
+                onUpdateArrow={handleUpdateArrow}
+                onSelectActiveArrow={handleSelectActiveArrow}
+                onRemoveArrow={handleRemoveArrow}
+                onDuplicateArrow={handleDuplicateArrow}
                 previewRef={previewFrameRef}
                 isExporting={isExporting}
                 onDimensionsChange={setScreenDimensions}
@@ -1403,6 +1583,13 @@ export default function App() {
             onAddBlurZone={handleAddBlurZone}
             onRemoveFocusZone={handleRemoveFocusZone}
             onDuplicateFocusZone={handleDuplicateFocusZone}
+            arrows={settings.arrows}
+            activeArrowIndex={settings.activeArrowIndex}
+            onAddArrow={handleAddArrow}
+            onUpdateArrow={handleUpdateArrow}
+            onSelectActiveArrow={handleSelectActiveArrow}
+            onRemoveArrow={handleRemoveArrow}
+            onDuplicateArrow={handleDuplicateArrow}
             onImportImage={handleImportImage}
             onSelectSample={handleSelectSample}
             onExport={handleExportPng}

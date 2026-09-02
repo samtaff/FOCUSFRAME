@@ -1,13 +1,20 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { FrameSettings, FocusRect, GuideLine } from '../types';
+import { FrameSettings, FocusRect, GuideLine, ArrowAnnotation } from '../types';
 import { Rulers } from './Rulers';
 import { GuideLinesOverlay } from './GuideLinesOverlay';
+import { getArrowSvgPath } from '../utils/arrow';
 
 interface PreviewCanvasProps {
   settings: FrameSettings;
   imageSrc: string;
   onUpdateFocus: (focus: Partial<FocusRect>, targetIndex?: number) => void;
   onSelectActiveFocus?: (index: number) => void;
+  arrows?: ArrowAnnotation[];
+  activeArrowIndex?: number;
+  onUpdateArrow?: (updates: Partial<ArrowAnnotation>, targetIndex?: number) => void;
+  onSelectActiveArrow?: (index: number) => void;
+  onRemoveArrow?: (index: number) => void;
+  onDuplicateArrow?: (index: number) => void;
   previewRef: React.RefObject<HTMLDivElement | null>;
   isExporting?: boolean;
   onDimensionsChange?: (dims: { width: number; height: number }) => void;
@@ -26,6 +33,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   imageSrc,
   onUpdateFocus,
   onSelectActiveFocus,
+  arrows = [],
+  activeArrowIndex = 0,
+  onUpdateArrow,
+  onSelectActiveArrow,
+  onRemoveArrow,
+  onDuplicateArrow,
   previewRef,
   isExporting = false,
   onDimensionsChange,
@@ -55,6 +68,15 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   } | null>(null);
   const [isSnappedX, setIsSnappedX] = useState(false);
   const [isSnappedY, setIsSnappedY] = useState(false);
+
+  // Arrow dragging state
+  const [isDraggingArrow, setIsDraggingArrow] = useState(false);
+  const [dragArrowIndex, setDragArrowIndex] = useState<number>(0);
+  const [dragArrowStart, setDragArrowStart] = useState<{
+    mouseX: number;
+    mouseY: number;
+    startArrow: ArrowAnnotation;
+  } | null>(null);
 
   // Normalize focuses array
   const allFocuses: FocusRect[] =
@@ -336,6 +358,65 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       };
     }
   }, [isDragging, handlePointerMove, handlePointerUp]);
+
+  // Arrow dragging pointer handlers
+  const handleArrowPointerDown = (e: React.PointerEvent, arrowIndex: number) => {
+    if (isExporting || isSpacePressed || isHandToolActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    onSelectActiveArrow?.(arrowIndex);
+    const arrow = arrows[arrowIndex];
+    if (!arrow) return;
+
+    setIsDraggingArrow(true);
+    setDragArrowIndex(arrowIndex);
+    setDragArrowStart({
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startArrow: { ...arrow },
+    });
+  };
+
+  const handleArrowPointerMove = useCallback(
+    (e: PointerEvent) => {
+      if (!isDraggingArrow || !dragArrowStart || !onUpdateArrow) return;
+      const deltaX = e.clientX - dragArrowStart.mouseX;
+      const deltaY = e.clientY - dragArrowStart.mouseY;
+      const screenW = renderedDimensions.width || 204;
+      const screenH = renderedDimensions.height || 450;
+      const deltaXPct = (deltaX / screenW) * 100;
+      const deltaYPct = (deltaY / screenH) * 100;
+
+      const newX = Math.max(0, Math.min(100, dragArrowStart.startArrow.x + deltaXPct));
+      const newY = Math.max(0, Math.min(100, dragArrowStart.startArrow.y + deltaYPct));
+
+      onUpdateArrow(
+        {
+          x: Math.round(newX * 10) / 10,
+          y: Math.round(newY * 10) / 10,
+        },
+        dragArrowIndex
+      );
+    },
+    [isDraggingArrow, dragArrowStart, renderedDimensions, onUpdateArrow, dragArrowIndex]
+  );
+
+  const handleArrowPointerUp = useCallback(() => {
+    setIsDraggingArrow(false);
+    setDragArrowStart(null);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingArrow) {
+      window.addEventListener('pointermove', handleArrowPointerMove);
+      window.addEventListener('pointerup', handleArrowPointerUp);
+      return () => {
+        window.removeEventListener('pointermove', handleArrowPointerMove);
+        window.removeEventListener('pointerup', handleArrowPointerUp);
+      };
+    }
+  }, [isDraggingArrow, handleArrowPointerMove, handleArrowPointerUp]);
 
   // Exact pixel conversion for active focus
   const curScreenW = renderedDimensions.width || 204;
@@ -845,6 +926,94 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   </div>
                 );
               })}
+
+              {/* Layer 4: Arrow Annotations SVG Render Layer (Crisp Vector Canvas) */}
+              {arrows && arrows.length > 0 && (
+                <svg
+                  id="arrows-canvas-layer"
+                  className="absolute inset-0 w-full h-full pointer-events-none z-25 overflow-visible"
+                  viewBox={`0 0 ${curScreenW} ${curScreenH}`}
+                >
+                  {arrows.map((arrow, idx) => {
+                    if (!arrow.enabled) return null;
+                    const cx = (arrow.x / 100) * curScreenW;
+                    const cy = (arrow.y / 100) * curScreenH;
+                    const pathD = getArrowSvgPath(arrow);
+
+                    return (
+                      <g
+                        key={arrow.id || `arrow-svg-${idx}`}
+                        transform={`translate(${cx}, ${cy}) rotate(${arrow.rotation ?? 180})`}
+                        opacity={arrow.opacity ?? 1.0}
+                      >
+                        <path d={pathD} fill={arrow.color || '#cc0000'} />
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              {/* Layer 5: Interactive Arrow Overlays & Controls when not exporting */}
+              {!isExporting &&
+                arrows &&
+                arrows.map((arrow, idx) => {
+                  if (!arrow.enabled) return null;
+                  const isArrowActive = idx === (activeArrowIndex ?? 0);
+                  const L = arrow.size || 40;
+                  const boxSize = Math.max(L, arrow.headWidth || 16) + 16;
+
+                  return (
+                    <div
+                      key={`interactive-arrow-${arrow.id || idx}`}
+                      id={`interactive-arrow-${idx}`}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Flèche ${arrow.name || idx + 1}`}
+                      onPointerDown={(e) => handleArrowPointerDown(e, idx)}
+                      onKeyDown={(e) => {
+                        if (
+                          isArrowActive &&
+                          ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+                        ) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                          const stepXPct = (stepPx / curScreenW) * 100;
+                          const stepYPct = (stepPx / curScreenH) * 100;
+
+                          let deltaX = 0;
+                          let deltaY = 0;
+                          if (e.key === 'ArrowLeft') deltaX = -stepXPct;
+                          if (e.key === 'ArrowRight') deltaX = stepXPct;
+                          if (e.key === 'ArrowUp') deltaY = -stepYPct;
+                          if (e.key === 'ArrowDown') deltaY = stepYPct;
+
+                          onUpdateArrow?.(
+                            {
+                              x: Math.round((arrow.x + deltaX) * 10) / 10,
+                              y: Math.round((arrow.y + deltaY) * 10) / 10,
+                            },
+                            idx
+                          );
+                        }
+                      }}
+                      className={`absolute z-30 touch-none select-none ${
+                        isSpacePressed || isHandToolActive
+                          ? 'pointer-events-none'
+                          : isDraggingArrow && isArrowActive
+                          ? 'cursor-grabbing'
+                          : 'cursor-grab'
+                      }`}
+                      style={{
+                        left: `${arrow.x}%`,
+                        top: `${arrow.y}%`,
+                        width: `${boxSize}px`,
+                        height: `${boxSize}px`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    />
+                  );
+                })}
             </div>
           </div>
         </div>
@@ -856,7 +1025,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         <span>
           Screen : <strong className="font-mono text-slate-600 font-semibold">{curScreenW} px × {curScreenH} px</strong>
           {' | '}Focus ({activeFocus.name || `Zone ${activeFocusIndex + 1}`}) : <strong className="font-mono text-emerald-600 font-semibold">{activeFocusWPx} px × {activeFocusHPx} px</strong>
-          {' | '}Zones : <strong className="font-mono text-blue-600 font-semibold">{allFocuses.filter(f => f.enabled).length}/{allFocuses.length} active(s)</strong>
+          {' | '}Zones : <strong className="font-mono text-blue-600 font-semibold">{allFocuses.filter(f => f.enabled).length}/{allFocuses.length}</strong>
+          {arrows && arrows.length > 0 && (
+            <>
+              {' | '}Flèches : <strong className="font-mono text-rose-600 font-semibold">{arrows.filter(a => a.enabled).length}/{arrows.length}</strong>
+            </>
+          )}
         </span>
       </div>
     </div>

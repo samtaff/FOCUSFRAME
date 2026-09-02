@@ -7,6 +7,8 @@ import {
   ExportFormatPreset,
   ZoneMode,
   BlurStyle,
+  ArrowAnnotation,
+  FocusRect,
 } from '../types';
 import {
   GRADIENT_PRESETS,
@@ -39,9 +41,13 @@ import {
   Droplet,
   EyeOff,
   SquareDashed,
+  ArrowRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  Navigation,
 } from 'lucide-react';
 import { PreciseNumberInput } from './PreciseNumberInput';
-import { FocusRect } from '../types';
 
 interface ControlPanelProps {
   settings: FrameSettings;
@@ -53,6 +59,13 @@ interface ControlPanelProps {
   onAddBlurZone?: () => void;
   onRemoveFocusZone?: (index: number) => void;
   onDuplicateFocusZone?: (index: number) => void;
+  arrows?: ArrowAnnotation[];
+  activeArrowIndex?: number;
+  onAddArrow?: (presetAngle?: number) => void;
+  onUpdateArrow?: (updates: Partial<ArrowAnnotation>, targetIndex?: number) => void;
+  onSelectActiveArrow?: (index: number) => void;
+  onRemoveArrow?: (index: number) => void;
+  onDuplicateArrow?: (index: number) => void;
   onImportImage: (file: File) => void;
   onSelectSample: (sampleId: string) => void;
   onExport: (chooseDirectory?: boolean) => void;
@@ -75,6 +88,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onAddBlurZone,
   onRemoveFocusZone,
   onDuplicateFocusZone,
+  arrows = [],
+  activeArrowIndex = 0,
+  onAddArrow,
+  onUpdateArrow,
+  onSelectActiveArrow,
+  onRemoveArrow,
+  onDuplicateArrow,
   onImportImage,
   onSelectSample,
   onExport,
@@ -89,18 +109,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [unit, setUnit] = useState<'px' | '%'>('px');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    source: false, // Toutes les sections fermées par défaut
+    source: false,
     container: false,
     focus: false,
+    arrows: false,
     export: false,
   });
 
   const allFocuses = settings.focuses && settings.focuses.length > 0 ? settings.focuses : [settings.focus];
-  const activeFocusIndex = Math.max(0, Math.min(allFocuses.length - 1, settings.activeFocusIndex ?? 0));
-  const focus = allFocuses[activeFocusIndex] || settings.focus;
+  const currentActiveFocusIndex = Math.max(0, Math.min(allFocuses.length - 1, settings.activeFocusIndex ?? 0));
+  const focus = allFocuses[currentActiveFocusIndex] || settings.focus;
+
+  const currentArrowIndex = Math.max(0, Math.min((arrows.length || 1) - 1, activeArrowIndex ?? 0));
+  const activeArrow = arrows[currentArrowIndex] || null;
 
   const updateActiveFocus = (updates: Partial<FocusRect>) => {
-    onUpdateFocus(updates, activeFocusIndex);
+    onUpdateFocus(updates, currentActiveFocusIndex);
+  };
+
+  const updateActiveArrow = (updates: Partial<ArrowAnnotation>) => {
+    onUpdateArrow?.(updates, currentArrowIndex);
   };
 
   const toggleSection = (sectionKey: string) => {
@@ -195,7 +223,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.svg"
                 className="hidden"
                 onChange={handleFileChange}
                 id="file-upload-input"
@@ -811,7 +839,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       <button
                         type="button"
                         id="btn-dup-zone"
-                        onClick={() => onDuplicateFocusZone(activeFocusIndex)}
+                        onClick={() => onDuplicateFocusZone(currentActiveFocusIndex)}
                         title="Dupliquer la zone active"
                         className="px-1.5 py-0.5 text-[11px] text-slate-600 hover:text-slate-900 bg-black/[0.04] hover:bg-black/[0.08] rounded-md flex items-center gap-1 transition-all cursor-pointer"
                       >
@@ -822,7 +850,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       <button
                         type="button"
                         id="btn-del-zone"
-                        onClick={() => onRemoveFocusZone(activeFocusIndex)}
+                        onClick={() => onRemoveFocusZone(currentActiveFocusIndex)}
                         title="Supprimer la zone active"
                         className="p-1 text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer"
                       >
@@ -840,7 +868,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       type="button"
                       onClick={() => onSelectActiveFocus?.(idx)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                        idx === activeFocusIndex
+                        idx === currentActiveFocusIndex
                           ? f.mode === 'blur'
                             ? 'bg-sky-700 text-white shadow-xs'
                             : 'bg-slate-900 text-white shadow-xs'
@@ -900,7 +928,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     id="zone-mode-blur"
                     onClick={() => {
                       const hasOtherFocusZones = allFocuses.some(
-                        (f, idx) => idx !== activeFocusIndex && f.enabled && f.mode !== 'blur'
+                        (f, idx) => idx !== currentActiveFocusIndex && f.enabled && f.mode !== 'blur'
                       );
                       updateActiveFocus({
                         mode: 'blur',
@@ -1846,6 +1874,206 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           )}
             </>
+          )}
+        </section>
+
+        {/* ================= SECTION 3.5: FLÈCHE D'ANNOTATION (ROUGE FIXE 40x16px) ================= */}
+        <section className="pt-4 border-t border-black/[0.06] space-y-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => toggleSection('arrows')}
+              className="flex items-center gap-2 text-left group cursor-pointer select-none"
+              aria-expanded={openSections.arrows}
+            >
+              <h3 className="text-xs font-semibold text-slate-500 group-hover:text-slate-800 uppercase tracking-wider transition-colors flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#cc0000] inline-block" />
+                <span>3.5 Flèche d'Annotation</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-red-50 text-[#cc0000] border border-red-200 rounded font-mono font-medium">
+                  40×16px
+                </span>
+                {arrows.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 bg-red-100 text-[#cc0000] rounded-full font-mono font-bold">
+                    {arrows.filter((a) => a.enabled).length}/{arrows.length}
+                  </span>
+                )}
+              </h3>
+              <ChevronDown
+                className={`w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${
+                  openSections.arrows ? 'rotate-0' : '-rotate-90'
+                }`}
+              />
+            </button>
+
+            {/* Quick Add Red Arrow Button */}
+            {onAddArrow && (
+              <button
+                type="button"
+                id="btn-add-arrow-header"
+                onClick={() => onAddArrow()}
+                className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-[#cc0000] hover:bg-[#b30000] text-white font-medium shadow-2xs transition-all cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>+ Flèche</span>
+              </button>
+            )}
+          </div>
+
+          {openSections.arrows && (
+            <div className="space-y-3 animate-in fade-in duration-150">
+              {arrows.length === 0 ? (
+                <div className="text-center py-4 px-4 macos-card text-xs text-slate-500 space-y-2.5">
+                  <p className="text-slate-600">Aucune flèche d'annotation.</p>
+                  {onAddArrow && (
+                    <button
+                      type="button"
+                      id="btn-add-arrow-empty"
+                      onClick={() => onAddArrow()}
+                      className="px-3 py-1.5 bg-[#cc0000] hover:bg-[#b30000] text-white text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Ajouter une flèche rouge (40×16px)</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {/* List of Arrows */}
+                  <div className="space-y-1.5">
+                    {arrows.map((arr, idx) => {
+                      const isArrActive = idx === currentArrowIndex;
+                      return (
+                        <div
+                          key={arr.id || `arrow-row-${idx}`}
+                          className={`p-2 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                            isArrActive
+                              ? 'bg-white border-red-400/80 shadow-xs ring-1 ring-red-400/40'
+                              : 'bg-white/70 border-black/5 hover:bg-white'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onSelectActiveArrow?.(idx)}
+                            className="flex items-center gap-2 text-left flex-1 min-w-0 cursor-pointer"
+                          >
+                            <div
+                              className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-2xs shrink-0"
+                              style={{ backgroundColor: arr.color || '#cc0000' }}
+                            >
+                              {arr.rotation === 180 ? '←' : arr.rotation === 0 ? '→' : arr.rotation === 270 ? '↑' : '↓'}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-medium text-slate-800 truncate">
+                                {arr.name || `Flèche ${idx + 1}`}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {Math.round(arr.rotation ?? 180)}° • 40×16px
+                              </span>
+                            </div>
+                          </button>
+
+                          {/* Quick Orientation Controls */}
+                          <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-black/5">
+                            {[
+                              { label: '←', rot: 180, title: 'Gauche (180°)' },
+                              { label: '→', rot: 0, title: 'Droite (0°)' },
+                              { label: '↑', rot: 270, title: 'Haut (270°)' },
+                              { label: '↓', rot: 90, title: 'Bas (90°)' },
+                            ].map((dir) => (
+                              <button
+                                key={dir.rot}
+                                type="button"
+                                title={dir.title}
+                                onClick={() => onUpdateArrow?.({ rotation: dir.rot }, idx)}
+                                className={`w-5 h-5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                  (arr.rotation ?? 180) === dir.rot
+                                    ? 'bg-[#cc0000] text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                }`}
+                              >
+                                {dir.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            {/* Toggle Enabled */}
+                            <button
+                              type="button"
+                              onClick={() => onUpdateArrow?.({ enabled: !arr.enabled }, idx)}
+                              title={arr.enabled ? 'Masquer' : 'Afficher'}
+                              className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+                                arr.enabled ? 'text-emerald-700 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-100'
+                              }`}
+                            >
+                              {arr.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
+
+                            {/* Delete */}
+                            {onRemoveArrow && (
+                              <button
+                                type="button"
+                                onClick={() => onRemoveArrow(idx)}
+                                title="Supprimer la flèche"
+                                className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Active Arrow Quick Orientation & Actions */}
+                  {activeArrow && (
+                    <div className="macos-card p-3 rounded-xl space-y-2.5 bg-red-50/30 border border-red-100">
+                      <div className="flex items-center justify-between text-xs text-slate-700">
+                        <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#cc0000]" />
+                          <span>Orientation de la flèche active</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateActiveArrow({ x: 50, y: 50 })}
+                          className="text-[10px] px-2 py-0.5 bg-white border border-black/10 rounded text-slate-600 hover:bg-slate-50 font-medium"
+                        >
+                          Recentrer
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { label: '← Gauche', rot: 180 },
+                          { label: '→ Droite', rot: 0 },
+                          { label: '↑ Haut', rot: 270 },
+                          { label: '↓ Bas', rot: 90 },
+                        ].map((dir) => (
+                          <button
+                            key={dir.rot}
+                            type="button"
+                            onClick={() => updateActiveArrow({ rotation: dir.rot })}
+                            className={`py-1.5 px-1 rounded-lg text-[11px] font-semibold transition-all border text-center cursor-pointer ${
+                              (activeArrow.rotation ?? 180) === dir.rot
+                                ? 'bg-[#cc0000] text-white border-[#cc0000] shadow-2xs'
+                                : 'bg-white text-slate-700 border-black/10 hover:bg-slate-50'
+                            }`}
+                          >
+                            {dir.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="pt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span className="text-slate-600">Style : <strong>Fixe 40×16px • Rouge #cc0000</strong></span>
+                        <span className="text-slate-400">Glissez sur l'image pour positionner</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </section>
 
