@@ -577,10 +577,65 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             )}
           </div>
 
-          {/* Curseur: Border-radius du conteneur */}
+          {/* Curseur: Coins arrondis de la capture (Image) */}
           <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs mb-1">
+              <span className="text-slate-700 font-medium">Coins arrondis de la capture (Image)</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="40"
+                  step="1"
+                  value={settings.screenshotRadius ?? 15}
+                  onChange={(e) =>
+                    onUpdateSettings({
+                      screenshotRadius: Math.max(0, Math.min(40, Number(e.target.value) || 0)),
+                    })
+                  }
+                  className="w-11 h-5 text-center font-mono font-semibold text-[11px] macos-input"
+                />
+                <span className="text-slate-400 font-mono text-[10px]">px</span>
+              </div>
+            </div>
+            <input
+              id="slider-screenshot-radius"
+              type="range"
+              min="0"
+              max="40"
+              step="1"
+              value={settings.screenshotRadius ?? 15}
+              onChange={(e) => onUpdateSettings({ screenshotRadius: Number(e.target.value) })}
+              className="macos-slider"
+            />
+            {/* Quick Presets for Screenshot Radius */}
+            <div className="flex items-center gap-1 pt-0.5">
+              {[
+                { label: '0px (Droit)', val: 0 },
+                { label: '8px (Doux)', val: 8 },
+                { label: '15px (Défaut)', val: 15 },
+                { label: '24px (Mobile)', val: 24 },
+              ].map((p) => (
+                <button
+                  key={p.val}
+                  type="button"
+                  onClick={() => onUpdateSettings({ screenshotRadius: p.val })}
+                  className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors cursor-pointer ${
+                    (settings.screenshotRadius ?? 15) === p.val
+                      ? 'bg-slate-900 text-white border-slate-900 font-bold'
+                      : 'bg-black/[0.03] hover:bg-black/[0.06] text-slate-600 border-black/10'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Curseur: Border-radius du conteneur */}
+          <div className="space-y-1.5 pt-1">
             <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-700 font-medium">Border Radius (Conteneur)</span>
+              <span className="text-slate-700 font-medium">Border Radius (Conteneur externe)</span>
               <span className="text-slate-500 font-mono text-[11px]">{settings.borderRadius}px</span>
             </div>
             <input

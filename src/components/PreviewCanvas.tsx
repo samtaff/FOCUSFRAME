@@ -527,6 +527,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 borderRadius: `${settings.screenshotRadius}px`,
                 maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
                 boxShadow: getScreenshotShadowStyle(),
+                isolation: 'isolate',
               }}
             >
               {/* Inner screenshot clipping wrapper with screenshot radius */}

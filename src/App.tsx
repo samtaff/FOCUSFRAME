@@ -809,15 +809,31 @@ export default function App() {
           const g = parseInt(hex.substring(2, 4), 16) || 0;
           const b = parseInt(hex.substring(4, 6), 16) || 0;
           const opacity = shadowConf.opacity ?? 0.50;
-          
+          const shadowBlur = (shadowConf.blur ?? 9) * effectiveScale;
+          const shadowOffsetX = (shadowConf.offsetX ?? 2) * effectiveScale;
+          const shadowOffsetY = (shadowConf.offsetY ?? 3) * effectiveScale;
+
+          // CSS box-shadow standard: The shadow is cast strictly OUTSIDE the border-box.
+          // To prevent any solid black fill or shadow bleed under the screenshot (which caused
+          // a dark outline / "liseré noir" along edges and rounded corners):
+          // 1. Clip out the screenshot interior using 'evenodd' winding rule on a surrounding box.
+          // 2. Cast the shadow from geometry shifted far offscreen so only the soft shadow is drawn.
           ctx.save();
-          ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${opacity})`;
-          ctx.shadowOffsetX = (shadowConf.offsetX ?? 2) * effectiveScale;
-          ctx.shadowOffsetY = (shadowConf.offsetY ?? 3) * effectiveScale;
-          ctx.shadowBlur = (shadowConf.blur ?? 9) * effectiveScale;
           ctx.beginPath();
+          const margin = shadowBlur * 4 + 200;
+          ctx.rect(-margin, -margin, frameW + margin * 2, frameH + margin * 2);
           ctx.roundRect(pad, pad, innerW, innerH, sRadius);
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 1.0)`;
+          ctx.clip('evenodd');
+
+          const shiftX = 10000;
+          ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+          ctx.shadowOffsetX = shadowOffsetX + shiftX;
+          ctx.shadowOffsetY = shadowOffsetY;
+          ctx.shadowBlur = shadowBlur;
+
+          ctx.beginPath();
+          ctx.roundRect(pad - shiftX, pad, innerW, innerH, sRadius);
+          ctx.fillStyle = '#000000';
           ctx.fill();
           ctx.restore();
         }
