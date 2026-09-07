@@ -711,6 +711,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 id="focus-contour-border-svg"
                 className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
                 viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
+                shapeRendering="geometricPrecision"
+                style={{ imageRendering: 'auto' }}
               >
                 {allFocuses.map((f, idx) => {
                   if (!f.enabled || !f.showBorder) return null;
@@ -738,6 +740,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
                       strokeWidth={f.borderWidth || 2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
                     />
                   ) : (
@@ -752,6 +756,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
                       strokeWidth={f.borderWidth || 2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
                     />
                   );

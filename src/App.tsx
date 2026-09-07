@@ -745,10 +745,24 @@ export default function App() {
           homotheticRatio = (settings.exportCustomHeight || 450) / totalBaseH;
         }
 
-        const effectiveScale = homotheticRatio * scaleMultiplier;
+        const targetScale = homotheticRatio * scaleMultiplier;
+        const targetW = Math.max(1, Math.round(baseW * targetScale));
+        const targetH = Math.max(1, Math.round(totalBaseH * targetScale));
 
-        const frameW = baseW * effectiveScale;
-        const frameH = totalBaseH * effectiveScale;
+        // Vector & Stroke Anti-Aliasing via Super-Sampled Anti-Aliasing (SSAA):
+        // When exporting at standard or compact formats (such as the required height 450px format),
+        // drawing curved strokes (pills, circles, rounded corners) directly on a 1x canvas
+        // causes harsh stair-stepping (crénelage) because the low-resolution pixel grid
+        // only offers a few discrete pixels along the curve.
+        // By rendering vector contours, focus borders, cutouts, and images inside a high-density
+        // buffer (target minimum ~1800px height) and then downscaling via multi-pass bicubic
+        // area-averaging, we completely eliminate aliasing/crénelage on curves while strictly
+        // preserving the EXACT target dimensions and export format requested by the user.
+        const oversample = Math.max(1, Math.min(4, Math.ceil(1800 / targetH)));
+        const effectiveScale = targetScale * oversample;
+
+        const frameW = targetW * oversample;
+        const frameH = targetH * oversample;
         const pad = padBase * effectiveScale;
         const innerW = innerWBase * effectiveScale;
         const innerH = innerHBase * effectiveScale;
@@ -1064,6 +1078,8 @@ export default function App() {
             }
             ctx.strokeStyle = f.borderColor || '#cc0000';
             ctx.lineWidth = bWidth;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
             if (f.borderStyle === 'dashed') {
               ctx.setLineDash([4 * effectiveScale, 4 * effectiveScale]);
             }
@@ -1095,6 +1111,42 @@ export default function App() {
               arrow.cornerRadius ?? 0,
               arrow.roundedTail !== false
             );
+          }
+        }
+
+        if (oversample > 1) {
+          // Downscale from the supersampled high-density buffer to the exact requested export dimensions.
+          // This applies continuous area-weighted bicubic anti-aliasing to all curved strokes,
+          // borders, and vectors, completely eliminating jagged stairs (crénelage).
+          const finalCanvas = document.createElement('canvas');
+          finalCanvas.width = targetW;
+          finalCanvas.height = targetH;
+          const finalCtx = finalCanvas.getContext('2d');
+          if (finalCtx) {
+            finalCtx.imageSmoothingEnabled = true;
+            finalCtx.imageSmoothingQuality = 'high';
+
+            if (oversample === 4) {
+              // 2-pass step-down (4x -> 2x -> 1x) to achieve maximum edge smoothness and optical sharpness
+              const midW = Math.max(1, Math.round(targetW * 2));
+              const midH = Math.max(1, Math.round(targetH * 2));
+              const midCanvas = document.createElement('canvas');
+              midCanvas.width = midW;
+              midCanvas.height = midH;
+              const midCtx = midCanvas.getContext('2d');
+              if (midCtx) {
+                midCtx.imageSmoothingEnabled = true;
+                midCtx.imageSmoothingQuality = 'high';
+                midCtx.drawImage(canvas, 0, 0, midW, midH);
+                finalCtx.drawImage(midCanvas, 0, 0, targetW, targetH);
+                resolve(finalCanvas.toDataURL('image/png'));
+                return;
+              }
+            }
+
+            finalCtx.drawImage(canvas, 0, 0, targetW, targetH);
+            resolve(finalCanvas.toDataURL('image/png'));
+            return;
           }
         }
 
