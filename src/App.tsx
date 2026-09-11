@@ -1619,7 +1619,7 @@ export default function App() {
           >
             {/* Container for the 240px constrained card (macOS Frosted Tile) */}
             <div
-              className={`relative z-10 w-full flex flex-col items-center justify-center p-8 sm:p-10 lg:p-12 macos-card bg-canvas-dots transition-all duration-150 min-h-[540px] xl:min-h-[620px] ${
+              className={`relative z-10 w-full flex flex-col items-center justify-center p-8 sm:p-10 lg:p-12 macos-card bg-canvas-dots min-h-[540px] xl:min-h-[620px] ${
                 zoom > 1.0 ? 'max-w-none' : 'max-w-[480px] xl:max-w-[540px]'
               }`}
             >

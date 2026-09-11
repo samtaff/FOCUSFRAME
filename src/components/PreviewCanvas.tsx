@@ -90,14 +90,22 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   );
   const activeFocus = allFocuses[activeFocusIndex] || allFocuses[0] || settings.focus;
 
+  const supportsZoom =
+    typeof CSS !== 'undefined' &&
+    typeof CSS.supports === 'function' &&
+    CSS.supports('zoom', '1');
+
   // Observe actual screenshot rendered dimensions with subpixel accuracy
   useEffect(() => {
     if (!screenshotBoxRef.current) return;
     const updateDims = () => {
       if (screenshotBoxRef.current) {
-        const rect = screenshotBoxRef.current.getBoundingClientRect();
-        const w = rect.width || screenshotBoxRef.current.clientWidth || 204;
-        const h = rect.height || screenshotBoxRef.current.clientHeight || 490;
+        const box = screenshotBoxRef.current;
+        const rect = box.getBoundingClientRect();
+        const currentZoom = supportsZoom ? (zoom || 1) : 1;
+        // Always measure intrinsic layout dimensions (independent of zoom scale)
+        const w = Math.round(box.offsetWidth || (rect.width / currentZoom) || 204);
+        const h = Math.round(box.offsetHeight || (rect.height / currentZoom) || 490);
         setRenderedDimensions({ width: w, height: h });
         if (onDimensionsChange) {
           onDimensionsChange({ width: w, height: h });
@@ -109,7 +117,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     const observer = new ResizeObserver(updateDims);
     observer.observe(screenshotBoxRef.current);
     return () => observer.disconnect();
-  }, [onDimensionsChange, imageSrc, settings.padding]);
+  }, [onDimensionsChange, imageSrc, settings.padding, zoom, supportsZoom]);
 
   // Background style computation
   const getBackgroundStyle = () => {
@@ -383,10 +391,11 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       if (!isDraggingArrow || !dragArrowStart || !onUpdateArrow) return;
       const deltaX = e.clientX - dragArrowStart.mouseX;
       const deltaY = e.clientY - dragArrowStart.mouseY;
-      const screenW = renderedDimensions.width || 204;
-      const screenH = renderedDimensions.height || 450;
-      const deltaXPct = (deltaX / screenW) * 100;
-      const deltaYPct = (deltaY / screenH) * 100;
+      const rect = screenshotBoxRef.current?.getBoundingClientRect();
+      const currentBoxW = rect?.width || ((renderedDimensions.width || 204) * (zoom || 1));
+      const currentBoxH = rect?.height || ((renderedDimensions.height || 450) * (zoom || 1));
+      const deltaXPct = (deltaX / currentBoxW) * 100;
+      const deltaYPct = (deltaY / currentBoxH) * 100;
 
       const newX = Math.max(0, Math.min(100, dragArrowStart.startArrow.x + deltaXPct));
       const newY = Math.max(0, Math.min(100, dragArrowStart.startArrow.y + deltaYPct));
@@ -466,16 +475,24 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
-      {/* Zoomable & Pannable Container with smooth 60fps/120fps hardware transform */}
+      {/* Zoomable & Pannable Container with crisp vector rasterization */}
       <div
         id="preview-zoom-wrapper"
-        className="transition-transform duration-75 flex items-center justify-center select-none"
-        style={{
-          transform: isExporting
-            ? 'none'
-            : `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-          transformOrigin: 'center center',
-        }}
+        className="flex items-center justify-center select-none"
+        style={
+          isExporting
+            ? undefined
+            : supportsZoom
+            ? {
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
+                zoom: zoom,
+                transformOrigin: 'center center',
+              }
+            : {
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: 'center center',
+              }
+        }
       >
         {/* Outer constraint wrapper with transparent checkboard preview */}
         <div
@@ -504,7 +521,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           <div
             ref={previewRef}
             id="exportable-frame"
-            className="relative w-full overflow-visible transition-all duration-150 flex flex-col items-center justify-center"
+            className="relative w-full overflow-visible flex flex-col items-center justify-center"
             style={{
               maxWidth: `${targetFrameWidth}px`,
               maxHeight: `${targetFrameHeight}px`,
@@ -531,7 +548,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             <div
               ref={screenshotBoxRef}
               id="screenshot-wrapper"
-              className="relative w-full flex items-center justify-center bg-transparent transition-all duration-150"
+              className="relative w-full flex items-center justify-center bg-transparent"
               style={{
                 borderRadius: `${settings.screenshotRadius}px`,
                 maxHeight: `${innerMaxHeight}px`,
@@ -556,6 +573,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   style={{
                     maxHeight: `${innerMaxHeight}px`,
                     filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
+                    imageRendering: 'auto',
                   }}
                   crossOrigin="anonymous"
                   draggable={false}
@@ -563,25 +581,71 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
 
                 {/* Layer 1.5: If background is blurred, render crisp unblurred cutout for Focus zones */}
                 {Boolean(settings.backgroundBlur && settings.backgroundBlur > 0 && hasAnyFocusCutout) && (
-                  <div
-                    className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-5"
-                    style={{
-                      maskImage: `url(#focus-crisp-mask)`,
-                      WebkitMaskImage: `url(#focus-crisp-mask)`,
-                    }}
-                  >
-                    <img
-                      src={imageSrc}
-                      alt=""
-                      aria-hidden="true"
-                      className="w-full h-auto block select-none pointer-events-none object-contain"
+                  <>
+                    <svg className="absolute w-0 h-0 pointer-events-none" aria-hidden="true">
+                      <defs>
+                        <mask id="focus-crisp-mask">
+                          <rect x="0" y="0" width="100%" height="100%" fill="black" />
+                          {allFocuses.map((f, idx) => {
+                            if (!f.enabled || f.mode === 'blur') return null;
+                            const fExactX = (f.x / 100) * curScreenW;
+                            const fExactY = (f.y / 100) * curScreenH;
+                            const fExactW = (f.width / 100) * curScreenW;
+                            const fExactH = (f.height / 100) * curScreenH;
+                            let fRadius = 0;
+                            if (f.shape === 'pill' || f.shape === 'circle') {
+                              fRadius = Math.min(fExactW, fExactH) / 2;
+                            } else if (f.shape === 'rectangle') {
+                              fRadius = 0;
+                            } else {
+                              fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                            }
+
+                            return f.shape === 'circle' ? (
+                              <ellipse
+                                key={`crisp-mask-${f.id || idx}`}
+                                cx={fExactX + fExactW / 2}
+                                cy={fExactY + fExactH / 2}
+                                rx={Math.max(0.1, fExactW / 2)}
+                                ry={Math.max(0.1, fExactH / 2)}
+                                fill="white"
+                              />
+                            ) : (
+                              <rect
+                                key={`crisp-mask-${f.id || idx}`}
+                                x={fExactX}
+                                y={fExactY}
+                                width={Math.max(0.1, fExactW)}
+                                height={Math.max(0.1, fExactH)}
+                                rx={fRadius}
+                                ry={fRadius}
+                                fill="white"
+                              />
+                            );
+                          })}
+                        </mask>
+                      </defs>
+                    </svg>
+                    <div
+                      className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-5"
                       style={{
-                        maxHeight: `${innerMaxHeight}px`,
+                        maskImage: `url(#focus-crisp-mask)`,
+                        WebkitMaskImage: `url(#focus-crisp-mask)`,
                       }}
-                      crossOrigin="anonymous"
-                      draggable={false}
-                    />
-                  </div>
+                    >
+                      <img
+                        src={imageSrc}
+                        alt=""
+                        aria-hidden="true"
+                        className="w-full h-auto block select-none pointer-events-none object-contain"
+                        style={{
+                          maxHeight: `${innerMaxHeight}px`,
+                        }}
+                        crossOrigin="anonymous"
+                        draggable={false}
+                      />
+                    </div>
+                  </>
                 )}
 
                 {/* Layer 2: SVG Mask Dimming Overlay (Dimmable everywhere except cutout shapes) */}
