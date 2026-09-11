@@ -90,25 +90,23 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   );
   const activeFocus = allFocuses[activeFocusIndex] || allFocuses[0] || settings.focus;
 
-  const supportsZoom =
-    typeof CSS !== 'undefined' &&
-    typeof CSS.supports === 'function' &&
-    CSS.supports('zoom', '1');
-
-  // Observe actual screenshot rendered dimensions with subpixel accuracy
+  // Observe actual screenshot rendered dimensions
   useEffect(() => {
     if (!screenshotBoxRef.current) return;
     const updateDims = () => {
       if (screenshotBoxRef.current) {
         const box = screenshotBoxRef.current;
         const rect = box.getBoundingClientRect();
-        const currentZoom = supportsZoom ? (zoom || 1) : 1;
-        // Always measure intrinsic layout dimensions (independent of zoom scale)
-        const w = Math.round(box.offsetWidth || (rect.width / currentZoom) || 204);
-        const h = Math.round(box.offsetHeight || (rect.height / currentZoom) || 490);
+        const currentScale = isExporting ? 1.0 : (zoom || 1.0);
+        const w = Math.round(rect.width || box.clientWidth || 204 * currentScale);
+        const h = Math.round(rect.height || box.clientHeight || 490 * currentScale);
         setRenderedDimensions({ width: w, height: h });
         if (onDimensionsChange) {
-          onDimensionsChange({ width: w, height: h });
+          // Report unscaled base dimensions to parent state
+          onDimensionsChange({
+            width: Math.round(w / currentScale),
+            height: Math.round(h / currentScale),
+          });
         }
       }
     };
@@ -117,7 +115,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     const observer = new ResizeObserver(updateDims);
     observer.observe(screenshotBoxRef.current);
     return () => observer.disconnect();
-  }, [onDimensionsChange, imageSrc, settings.padding, zoom, supportsZoom]);
+  }, [onDimensionsChange, imageSrc, settings.padding, zoom, isExporting]);
 
   // Background style computation
   const getBackgroundStyle = () => {
@@ -133,17 +131,17 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     return {};
   };
 
-  const getScreenshotShadowStyle = () => {
+  const getScreenshotShadowStyle = (scale: number = 1) => {
     if (settings.shadowSettings && settings.shadowSettings.enabled) {
       const { color, opacity, offsetX, offsetY, blur } = settings.shadowSettings;
       const hex = (color || '#000000').replace('#', '');
       const r = parseInt(hex.substring(0, 2), 16) || 0;
       const g = parseInt(hex.substring(2, 4), 16) || 0;
       const b = parseInt(hex.substring(4, 6), 16) || 0;
-      return `${offsetX ?? 2}px ${offsetY ?? 3}px ${blur ?? 9}px rgba(${r}, ${g}, ${b}, ${opacity ?? 0.50})`;
+      return `${(offsetX ?? 2) * scale}px ${(offsetY ?? 3) * scale}px ${(blur ?? 9) * scale}px rgba(${r}, ${g}, ${b}, ${opacity ?? 0.50})`;
     }
     if (settings.shadow === 'none') return 'none';
-    return '2px 3px 9px rgba(0, 0, 0, 0.50)';
+    return `${2 * scale}px ${3 * scale}px ${9 * scale}px rgba(0, 0, 0, 0.50)`;
   };
 
   // Mouse & Touch handling for direct on-canvas drag & resize with magnetic snapping
@@ -435,14 +433,21 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const activeFocusWPx = Math.round((activeFocus.width / 100) * curScreenW);
   const activeFocusHPx = Math.round((activeFocus.height / 100) * curScreenH);
 
-  // Dynamic frame dimensions based on target format preset
-  const targetFrameHeight = settings.exportFormat === 'height_490'
+  // Scaled frame dimensions based on target format preset and zoom level
+  const currentZoom = isExporting ? 1.0 : (zoom || 1.0);
+  const baseFrameHeight = settings.exportFormat === 'height_490'
     ? 490
     : settings.exportFormat === 'height_450'
       ? 450
       : (settings.exportCustomHeight || 490);
-  const targetFrameWidth = Math.round(240 * (targetFrameHeight / 450));
-  const innerMaxHeight = Math.max(100, targetFrameHeight - settings.padding * 2);
+  const baseFrameWidth = Math.round(240 * (baseFrameHeight / 450));
+
+  const targetFrameWidth = Math.round(baseFrameWidth * currentZoom);
+  const targetFrameHeight = Math.round(baseFrameHeight * currentZoom);
+  const currentPadding = Math.round(settings.padding * currentZoom);
+  const currentBorderRadius = Math.round(settings.borderRadius * currentZoom);
+  const currentScreenshotRadius = Math.round(settings.screenshotRadius * currentZoom);
+  const innerMaxHeight = Math.max(100, targetFrameHeight - currentPadding * 2);
 
   // Check centering alignments for active focus
   const isHorizontallyCentered =
@@ -482,14 +487,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         style={
           isExporting
             ? undefined
-            : supportsZoom
-            ? {
-                transform: `translate(${pan.x}px, ${pan.y}px)`,
-                zoom: zoom,
-                transformOrigin: 'center center',
-              }
             : {
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
                 transformOrigin: 'center center',
               }
         }
@@ -500,19 +499,22 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           className={`relative flex justify-center items-center select-none rounded-xl p-0.5 ${
             settings.bgType === 'transparent' ? 'bg-checkerboard shadow-inner' : ''
           }`}
-          style={{ maxWidth: `${targetFrameWidth}px` }}
+          style={{
+            width: `${targetFrameWidth}px`,
+            maxWidth: `${targetFrameWidth}px`,
+          }}
         >
           {/* Ruler overlay on canvas */}
           {showRulers && !isExporting && (
             <Rulers
               screenshotWidth={curScreenW}
               screenshotHeight={curScreenH}
-              padding={settings.padding}
+              padding={currentPadding}
               focusX={activeFocusXPx}
               focusY={activeFocusYPx}
               focusW={activeFocusWPx}
               focusH={activeFocusHPx}
-              zoom={1.0}
+              zoom={currentZoom}
               onStartDragNewGuide={handleStartDragNewGuide}
             />
           )}
@@ -523,10 +525,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             id="exportable-frame"
             className="relative w-full overflow-visible flex flex-col items-center justify-center"
             style={{
+              width: `${targetFrameWidth}px`,
               maxWidth: `${targetFrameWidth}px`,
+              height: `${targetFrameHeight}px`,
               maxHeight: `${targetFrameHeight}px`,
-              borderRadius: `${settings.borderRadius}px`,
-              padding: `${settings.padding}px`,
+              borderRadius: `${currentBorderRadius}px`,
+              padding: `${currentPadding}px`,
               backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
               ...getBackgroundStyle(),
             }}
@@ -538,9 +542,9 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 onUpdateGuides={onUpdateGuides}
                 screenshotWidth={curScreenW}
                 screenshotHeight={curScreenH}
-                padding={settings.padding}
+                padding={currentPadding}
                 isExporting={isExporting}
-                zoom={zoom}
+                zoom={currentZoom}
               />
             )}
 
@@ -550,9 +554,9 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               id="screenshot-wrapper"
               className="relative w-full flex items-center justify-center bg-transparent"
               style={{
-                borderRadius: `${settings.screenshotRadius}px`,
+                borderRadius: `${currentScreenshotRadius}px`,
                 maxHeight: `${innerMaxHeight}px`,
-                boxShadow: getScreenshotShadowStyle(),
+                boxShadow: getScreenshotShadowStyle(currentZoom),
                 isolation: 'isolate',
               }}
             >
@@ -560,7 +564,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               <div
                 className="relative w-full overflow-hidden flex items-center justify-center bg-transparent"
                 style={{
-                  borderRadius: `${settings.screenshotRadius}px`,
+                  borderRadius: `${currentScreenshotRadius}px`,
                   maxHeight: `${innerMaxHeight}px`,
                 }}
               >
@@ -572,7 +576,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   className="w-full h-auto block select-none pointer-events-none object-contain"
                   style={{
                     maxHeight: `${innerMaxHeight}px`,
-                    filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
+                    filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur * currentZoom}px)` : undefined,
                     imageRendering: 'auto',
                   }}
                   crossOrigin="anonymous"
@@ -598,7 +602,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                             } else if (f.shape === 'rectangle') {
                               fRadius = 0;
                             } else {
-                              fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                              fRadius = Math.min(f.radius * currentZoom, fExactW / 2, fExactH / 2);
                             }
 
                             return f.shape === 'circle' ? (
@@ -681,7 +685,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                               } else if (f.shape === 'rectangle') {
                                 fRadius = 0;
                               } else {
-                                fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                                fRadius = Math.min(f.radius * currentZoom, fExactW / 2, fExactH / 2);
                               }
 
                               return f.shape === 'circle' ? (
@@ -746,10 +750,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     } else if (f.shape === 'rectangle') {
                       fRadius = 0;
                     } else {
-                      fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                      fRadius = Math.min(f.radius * currentZoom, fExactW / 2, fExactH / 2);
                     }
 
-                    const blurAmountPx = f.blurAmount ?? 10;
+                    const blurAmountPx = (f.blurAmount ?? 10) * currentZoom;
                     const isCircle = f.shape === 'circle';
                     const zoneOpacity = f.blurOpacity ?? 1.0;
 
@@ -789,8 +793,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               >
                 {allFocuses.map((f, idx) => {
                   if (!f.enabled || !f.showBorder) return null;
-                  const bWidth = f.borderWidth || 2;
-                  const pixelOffset = bWidth % 2 === 1 ? 0.5 : 0;
+                  const bWidth = (f.borderWidth || 2) * currentZoom;
+                  const pixelOffset = Math.round(bWidth) % 2 === 1 ? 0.5 : 0;
                   const fExactX = Math.round(((f.x / 100) * curScreenW) * 10) / 10;
                   const fExactY = Math.round((f.y / 100) * curScreenH) + pixelOffset;
                   const fExactW = Math.round(((f.width / 100) * curScreenW) * 10) / 10;
@@ -802,7 +806,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   } else if (f.shape === 'rectangle') {
                     fRadius = 0;
                   } else {
-                    fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                    fRadius = Math.min(f.radius * currentZoom, fExactW / 2, fExactH / 2);
                   }
 
                   return f.shape === 'circle' ? (
@@ -814,10 +818,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       ry={Math.max(0.1, fExactH / 2)}
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
-                      strokeWidth={f.borderWidth || 2}
+                      strokeWidth={bWidth}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
+                      strokeDasharray={f.borderStyle === 'dashed' ? `${4 * currentZoom} ${4 * currentZoom}` : undefined}
                     />
                   ) : (
                     <rect
@@ -830,10 +834,10 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       ry={fRadius}
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
-                      strokeWidth={f.borderWidth || 2}
+                      strokeWidth={bWidth}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
+                      strokeDasharray={f.borderStyle === 'dashed' ? `${4 * currentZoom} ${4 * currentZoom}` : undefined}
                     />
                   );
                 })}
@@ -893,7 +897,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                           ? '50%'
                           : f.shape === 'rectangle'
                           ? '0px'
-                          : `${f.radius}px`,
+                          : `${f.radius * currentZoom}px`,
                       border:
                         !f.showBorder && !isExporting
                           ? !showHandlesForZone
@@ -1020,7 +1024,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     if (!arrow.enabled) return null;
                     const cx = (arrow.x / 100) * curScreenW;
                     const cy = (arrow.y / 100) * curScreenH;
-                    const pathD = getArrowSvgPath(arrow);
+                    const pathD = getArrowSvgPath(arrow, currentZoom);
 
                     return (
                       <g
@@ -1041,8 +1045,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 arrows.map((arrow, idx) => {
                   if (!arrow.enabled) return null;
                   const isArrowActive = idx === (activeArrowIndex ?? 0);
-                  const L = arrow.size || 40;
-                  const boxSize = Math.max(L, arrow.headWidth || 16) + 16;
+                  const L = (arrow.size || 40) * currentZoom;
+                  const boxSize = Math.max(L, (arrow.headWidth || 16) * currentZoom) + 16 * currentZoom;
 
                   return (
                     <div

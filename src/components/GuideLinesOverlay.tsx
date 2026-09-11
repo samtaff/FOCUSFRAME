@@ -135,9 +135,10 @@ export const GuideLinesOverlay: React.FC<GuideLinesOverlayProps> = ({
       {guides.map((guide) => {
         const isHorizontal = guide.orientation === 'horizontal';
         const isDraggingThis = draggingGuide?.id === guide.id;
+        const z = zoom || 1.0;
         const posPx = isHorizontal
-          ? padding + guide.position
-          : padding + guide.position;
+          ? padding + guide.position * z
+          : padding + guide.position * z;
 
         return (
           <div

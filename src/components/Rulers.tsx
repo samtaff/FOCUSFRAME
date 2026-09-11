@@ -20,19 +20,26 @@ export const Rulers: React.FC<RulersProps> = ({
   focusY,
   focusW,
   focusH,
+  zoom = 1.0,
   onStartDragNewGuide,
 }) => {
+  const z = zoom || 1.0;
   // Total container dimensions including frame padding
   const totalW = screenshotWidth + padding * 2;
   const totalH = screenshotHeight + padding * 2;
 
+  // Unscaled design units
+  const baseW = Math.round(screenshotWidth / z);
+  const baseH = Math.round(screenshotHeight / z);
+  const basePadding = Math.round(padding / z);
+
   // Generate horizontal ticks across the full width
   const hTicks: { relPos: number; pxFromLeft: number; label?: string; isMajor: boolean; isMid: boolean }[] = [];
-  const minX = -Math.ceil(padding / 10) * 10;
-  const maxX = screenshotWidth + Math.ceil(padding / 10) * 10 + 10;
+  const minX = -Math.ceil(basePadding / 10) * 10;
+  const maxX = baseW + Math.ceil(basePadding / 10) * 10 + 10;
 
   for (let x = minX; x <= maxX; x += 10) {
-    const pxFromLeft = padding + x;
+    const pxFromLeft = padding + x * z;
     if (pxFromLeft >= 0 && pxFromLeft <= totalW) {
       const isMajor = x % 50 === 0;
       const isMid = !isMajor && x % 20 === 0;
@@ -48,11 +55,11 @@ export const Rulers: React.FC<RulersProps> = ({
 
   // Generate vertical ticks across the full height
   const vTicks: { relPos: number; pxFromTop: number; label?: string; isMajor: boolean; isMid: boolean }[] = [];
-  const minY = -Math.ceil(padding / 10) * 10;
-  const maxY = screenshotHeight + Math.ceil(padding / 10) * 10 + 10;
+  const minY = -Math.ceil(basePadding / 10) * 10;
+  const maxY = baseH + Math.ceil(basePadding / 10) * 10 + 10;
 
   for (let y = minY; y <= maxY; y += 10) {
-    const pxFromTop = padding + y;
+    const pxFromTop = padding + y * z;
     if (pxFromTop >= 0 && pxFromTop <= totalH) {
       const isMajor = y % 50 === 0;
       const isMid = !isMajor && y % 20 === 0;
