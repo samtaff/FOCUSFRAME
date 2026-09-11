@@ -97,7 +97,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       if (screenshotBoxRef.current) {
         const rect = screenshotBoxRef.current.getBoundingClientRect();
         const w = rect.width || screenshotBoxRef.current.clientWidth || 204;
-        const h = rect.height || screenshotBoxRef.current.clientHeight || 450;
+        const h = rect.height || screenshotBoxRef.current.clientHeight || 490;
         setRenderedDimensions({ width: w, height: h });
         if (onDimensionsChange) {
           onDimensionsChange({ width: w, height: h });
@@ -725,10 +725,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               >
                 {allFocuses.map((f, idx) => {
                   if (!f.enabled || !f.showBorder) return null;
-                  const fExactX = (f.x / 100) * curScreenW;
-                  const fExactY = (f.y / 100) * curScreenH;
-                  const fExactW = (f.width / 100) * curScreenW;
-                  const fExactH = (f.height / 100) * curScreenH;
+                  const bWidth = f.borderWidth || 2;
+                  const pixelOffset = bWidth % 2 === 1 ? 0.5 : 0;
+                  const fExactX = Math.round(((f.x / 100) * curScreenW) * 10) / 10;
+                  const fExactY = Math.round((f.y / 100) * curScreenH) + pixelOffset;
+                  const fExactW = Math.round(((f.width / 100) * curScreenW) * 10) / 10;
+                  const fExactH = Math.round((f.height / 100) * curScreenH);
 
                   let fRadius = 0;
                   if (f.shape === 'pill' || f.shape === 'circle') {

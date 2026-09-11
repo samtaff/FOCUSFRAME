@@ -1046,27 +1046,79 @@ export default function App() {
           ctx.restore();
         }
 
-        // 4. Draw Focus Borders with exact coordinates & crisp stroke if enabled
+        // Downscale the background, screenshot, and shadow composite to target dimensions
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = targetW;
+        finalCanvas.height = targetH;
+        const finalCtx = finalCanvas.getContext('2d');
+        if (!finalCtx) {
+          resolve(canvas.toDataURL('image/png'));
+          return;
+        }
+
+        finalCtx.imageSmoothingEnabled = true;
+        finalCtx.imageSmoothingQuality = 'high';
+
+        if (oversample === 4) {
+          // 2-pass step-down (4x -> 2x -> 1x) to achieve maximum edge smoothness and optical sharpness for image & shadows
+          const midW = Math.max(1, Math.round(targetW * 2));
+          const midH = Math.max(1, Math.round(targetH * 2));
+          const midCanvas = document.createElement('canvas');
+          midCanvas.width = midW;
+          midCanvas.height = midH;
+          const midCtx = midCanvas.getContext('2d');
+          if (midCtx) {
+            midCtx.imageSmoothingEnabled = true;
+            midCtx.imageSmoothingQuality = 'high';
+            midCtx.drawImage(canvas, 0, 0, midW, midH);
+            finalCtx.drawImage(midCanvas, 0, 0, targetW, targetH);
+          } else {
+            finalCtx.drawImage(canvas, 0, 0, targetW, targetH);
+          }
+        } else if (oversample > 1) {
+          finalCtx.drawImage(canvas, 0, 0, targetW, targetH);
+        } else {
+          finalCtx.drawImage(canvas, 0, 0, targetW, targetH);
+        }
+
+        // 4. Draw Focus Borders with razor-sharp pixel precision directly on the final canvas
+        // (Bypasses downscale resampling blur, guaranteeing 100% solid opacity with zero color bleed on horizontal lines)
+        const outPad = padBase * targetScale;
+        const outInnerW = innerWBase * targetScale;
+        const outInnerH = innerHBase * targetScale;
+
         for (const f of allFocuses) {
           if (f.enabled && f.showBorder) {
-            const boxX = pad + (innerW * f.x) / 100;
-            const boxY = pad + (innerH * f.y) / 100;
-            const boxW = (innerW * f.width) / 100;
-            const boxH = (innerH * f.height) / 100;
+            const rawX = outPad + (outInnerW * f.x) / 100;
+            const rawY = outPad + (outInnerH * f.y) / 100;
+            const rawW = (outInnerW * f.width) / 100;
+            const rawH = (outInnerH * f.height) / 100;
 
-            let boxR = Math.min(boxH / 2, (f.radius || 12) * effectiveScale);
+            const bWidth = Math.max(1, Math.round((f.borderWidth || 2) * targetScale));
+
+            // Subpixel grid alignment:
+            // Odd stroke widths (1, 3, 5px) require a 0.5px path offset to center on exact pixel lines.
+            // Even stroke widths (2, 4px) align natively to integer coordinates with zero anti-aliasing blur.
+            const pixelOffset = bWidth % 2 === 1 ? 0.5 : 0;
+            const boxX = Math.round(rawX) + pixelOffset;
+            const boxY = Math.round(rawY) + pixelOffset;
+            const boxW = Math.round(rawW);
+            const boxH = Math.round(rawH);
+
+            let boxR = Math.min(boxH / 2, (f.radius || 12) * targetScale);
             if (f.shape === 'pill' || f.shape === 'circle') {
               boxR = Math.min(boxW, boxH) / 2;
             } else if (f.shape === 'rectangle') {
               boxR = 0;
             }
 
-            ctx.save();
-            const bWidth = (f.borderWidth || 2) * effectiveScale;
+            finalCtx.save();
+            finalCtx.imageSmoothingEnabled = true;
+            finalCtx.imageSmoothingQuality = 'high';
 
-            ctx.beginPath();
+            finalCtx.beginPath();
             if (f.shape === 'circle') {
-              ctx.ellipse(
+              finalCtx.ellipse(
                 boxX + boxW / 2,
                 boxY + boxH / 2,
                 boxW / 2,
@@ -1076,29 +1128,29 @@ export default function App() {
                 Math.PI * 2
               );
             } else {
-              ctx.roundRect(boxX, boxY, boxW, boxH, boxR);
+              finalCtx.roundRect(boxX, boxY, boxW, boxH, boxR);
             }
-            ctx.strokeStyle = f.borderColor || '#cc0000';
-            ctx.lineWidth = bWidth;
-            ctx.lineJoin = 'round';
-            ctx.lineCap = 'round';
+            finalCtx.strokeStyle = f.borderColor || '#cc0000';
+            finalCtx.lineWidth = bWidth;
+            finalCtx.lineJoin = 'round';
+            finalCtx.lineCap = 'round';
             if (f.borderStyle === 'dashed') {
-              ctx.setLineDash([4 * effectiveScale, 4 * effectiveScale]);
+              finalCtx.setLineDash([4 * targetScale, 4 * targetScale]);
             }
-            ctx.stroke();
-            ctx.restore();
+            finalCtx.stroke();
+            finalCtx.restore();
           }
         }
 
-        // 5. Draw Arrow Annotations (Pointeurs & Callout Arrows)
+        // 5. Draw Arrow Annotations directly on the final canvas
         if (settings.arrows && settings.arrows.length > 0) {
           for (const arrow of settings.arrows) {
             if (!arrow.enabled) continue;
-            const arrowCenterX = pad + (innerW * arrow.x) / 100;
-            const arrowCenterY = pad + (innerH * arrow.y) / 100;
+            const arrowCenterX = outPad + (outInnerW * arrow.x) / 100;
+            const arrowCenterY = outPad + (outInnerH * arrow.y) / 100;
 
             drawArrowShape(
-              ctx,
+              finalCtx,
               arrowCenterX,
               arrowCenterY,
               arrow.size || 40,
@@ -1109,50 +1161,14 @@ export default function App() {
               arrow.color || '#cc0000',
               arrow.opacity ?? 1.0,
               arrow.hasShadow ?? false,
-              effectiveScale,
+              targetScale,
               arrow.cornerRadius ?? 0,
               arrow.roundedTail !== false
             );
           }
         }
 
-        if (oversample > 1) {
-          // Downscale from the supersampled high-density buffer to the exact requested export dimensions.
-          // This applies continuous area-weighted bicubic anti-aliasing to all curved strokes,
-          // borders, and vectors, completely eliminating jagged stairs (crénelage).
-          const finalCanvas = document.createElement('canvas');
-          finalCanvas.width = targetW;
-          finalCanvas.height = targetH;
-          const finalCtx = finalCanvas.getContext('2d');
-          if (finalCtx) {
-            finalCtx.imageSmoothingEnabled = true;
-            finalCtx.imageSmoothingQuality = 'high';
-
-            if (oversample === 4) {
-              // 2-pass step-down (4x -> 2x -> 1x) to achieve maximum edge smoothness and optical sharpness
-              const midW = Math.max(1, Math.round(targetW * 2));
-              const midH = Math.max(1, Math.round(targetH * 2));
-              const midCanvas = document.createElement('canvas');
-              midCanvas.width = midW;
-              midCanvas.height = midH;
-              const midCtx = midCanvas.getContext('2d');
-              if (midCtx) {
-                midCtx.imageSmoothingEnabled = true;
-                midCtx.imageSmoothingQuality = 'high';
-                midCtx.drawImage(canvas, 0, 0, midW, midH);
-                finalCtx.drawImage(midCanvas, 0, 0, targetW, targetH);
-                resolve(finalCanvas.toDataURL('image/png'));
-                return;
-              }
-            }
-
-            finalCtx.drawImage(canvas, 0, 0, targetW, targetH);
-            resolve(finalCanvas.toDataURL('image/png'));
-            return;
-          }
-        }
-
-        resolve(canvas.toDataURL('image/png'));
+        resolve(finalCanvas.toDataURL('image/png'));
       };
       img.onerror = () => reject(new Error('Image load failed'));
       img.src = currentImageSrc;
