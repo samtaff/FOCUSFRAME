@@ -1180,9 +1180,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <span className="font-semibold">Forme de la zone focus</span>
                   <span className="text-slate-800 font-mono font-bold text-[11px]">
                     {focus.shape === 'circle'
-                      ? 'Rond / Cercle'
+                      ? 'Rond (60×60px)'
                       : (focus.width > focus.height)
-                      ? 'Pilule Horizontale'
+                      ? 'Pilule Horizontale (42px)'
                       : 'Pilule Verticale (35px)'}
                   </span>
                 </div>
@@ -1226,7 +1226,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="button"
                     id="shape-btn-pill-h"
                     onClick={() => {
-                      const pillHeightPct = (35 / screenH) * 100;
+                      const pillHeightPct = (42 / screenH) * 100;
                       const pillWidthPct = ((screenW + 10) / screenW) * 100;
                       const pillXPct = (-5 / screenW) * 100;
                       onUpdateFocus({
@@ -1236,7 +1236,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         height: Math.round(pillHeightPct * 10) / 10,
                         x: Math.round(pillXPct * 10) / 10,
                         y: 35,
-                        margin: 5,
+                        margin: 0,
                       });
                     }}
                     className={`py-2 px-1 rounded-lg border text-xs font-medium cursor-pointer transition-all flex flex-col items-center justify-center gap-1 text-center ${
@@ -1250,16 +1250,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         ? 'border-white bg-white/30'
                         : 'border-slate-500 bg-slate-100'
                     }`} />
-                    <span className="text-[10px] leading-tight">Pilule H (35px)</span>
+                    <span className="text-[10px] leading-tight">Pilule H (42px)</span>
                   </button>
 
-                  {/* Rond / Cercle (55px x 55px) */}
+                  {/* Rond / Cercle (60px x 60px) */}
                   <button
                     type="button"
                     id="shape-btn-circle"
                     onClick={() => {
-                      const circleSizeWPct = (55 / screenW) * 100;
-                      const circleSizeHPct = (55 / screenH) * 100;
+                      const circleSizeWPct = (60 / screenW) * 100;
+                      const circleSizeHPct = (60 / screenH) * 100;
                       const currentCenterX = focus.x + focus.width / 2;
                       const currentCenterY = focus.y + focus.height / 2;
                       const newX = currentCenterX - circleSizeWPct / 2;
@@ -1280,7 +1280,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     }`}
                   >
                     <div className={`w-3.5 h-3.5 rounded-full border ${focus.shape === 'circle' ? 'border-white bg-white/30' : 'border-slate-500 bg-slate-100'}`} />
-                    <span className="text-[10px] leading-tight">Rond (55px)</span>
+                    <span className="text-[10px] leading-tight">Rond (60px)</span>
                   </button>
                 </div>
               </div>
@@ -1563,7 +1563,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                           onChange={(newMargin) => {
                             const isHoriz = focus.width > focus.height;
                             if (isHoriz) {
-                              const baseH = 35;
+                              const baseH = 42;
                               const baseW = screenW + 10;
                               const newHPx = baseH + newMargin * 2;
                               const newWPx = baseW + newMargin * 2;
@@ -1608,8 +1608,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
                     <div className="grid grid-cols-3 gap-1 pt-0.5">
                       {[
-                        { label: '0px (Rogné)', val: 0 },
-                        { label: '+5px (Défaut)', val: 5, highlight: true },
+                        { label: '0px (Net 42px)', val: 0 },
+                        { label: '+5px (Débordement)', val: 5 },
                         { label: '+10px', val: 10 },
                       ].map((item) => (
                         <button
@@ -1619,7 +1619,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                           onClick={() => {
                             const isHoriz = focus.width > focus.height;
                             if (isHoriz) {
-                              const baseH = 35;
+                              const baseH = 42;
                               const baseW = screenW + 10;
                               const newHPx = baseH + item.val * 2;
                               const newWPx = baseW + item.val * 2;

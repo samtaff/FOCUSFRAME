@@ -38,11 +38,11 @@ const INITIAL_FOCUS_1: FocusRect = {
   name: 'Zone 1',
   enabled: true,
   shape: 'pill',
-  x: 41.4,
-  y: 25.0,
-  width: 17.2,
-  height: 50.0,
-  margin: 5,
+  x: -2.5,
+  y: 35.0,
+  width: 104.9,
+  height: 8.6,
+  margin: 0,
   radius: 999,
   showBorder: true,
   borderColor: '#cc0000',
@@ -418,10 +418,10 @@ export default function App() {
       const screenW = screenDimensions.width || 204;
       const screenH = screenDimensions.height || 490;
 
-      // Create a default 55px x 55px Circle or Pill zone offset vertically
-      const circleSizeWPct = (55 / screenW) * 100;
-      const circleSizeHPct = (55 / screenH) * 100;
-      const newXPct = ((screenW - 55) / 2 / screenW) * 100;
+      // Create a default 60px x 60px Circle zone offset vertically
+      const circleSizeWPct = (60 / screenW) * 100;
+      const circleSizeHPct = (60 / screenH) * 100;
+      const newXPct = ((screenW - 60) / 2 / screenW) * 100;
       const offsetTop = Math.min(75, 20 + (curFocuses.length % 4) * 18);
 
       const newZone: FocusRect = {

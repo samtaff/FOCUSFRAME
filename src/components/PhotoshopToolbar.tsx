@@ -190,9 +190,9 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
   const isRounded = activeFocus.shape === 'rounded';
   const isRectangle = activeFocus.shape === 'rectangle';
 
-  // Apply Pill H (Hauteur 35px)
+  // Apply Pill H (Hauteur 42px)
   const selectPillH = () => {
-    const pillHeightPct = (35 / screenH) * 100;
+    const pillHeightPct = (42 / screenH) * 100;
     const pillWidthPct = ((screenW + 10) / screenW) * 100;
     const pillXPct = (-5 / screenW) * 100;
     onUpdateFocus({
@@ -203,7 +203,7 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
       height: Math.round(pillHeightPct * 10) / 10,
       x: Math.round(pillXPct * 10) / 10,
       y: 35,
-      margin: 5,
+      margin: 0,
     }, curActiveIndex);
   };
 
@@ -265,10 +265,10 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
     }, curActiveIndex);
   };
 
-  // Apply Circle (55px × 55px)
+  // Apply Circle (60px × 60px)
   const selectCircle = () => {
-    const circleSizeWPct = (55 / screenW) * 100;
-    const circleSizeHPct = (55 / screenH) * 100;
+    const circleSizeWPct = (60 / screenW) * 100;
+    const circleSizeHPct = (60 / screenH) * 100;
     const currentCenterX = activeFocus.x + activeFocus.width / 2;
     const currentCenterY = activeFocus.y + activeFocus.height / 2;
     const newX = currentCenterX - circleSizeWPct / 2;
@@ -485,12 +485,12 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
         />
       </button>
 
-      {/* Shape Tool 2: Pilule Horizontale (Hauteur 35px) */}
+      {/* Shape Tool 2: Pilule Horizontale (Hauteur 42px) */}
       <button
         type="button"
         id="ps-tool-pill-h"
         onClick={selectPillH}
-        title="Pilule Horizontale (Hauteur 35px)"
+        title="Pilule Horizontale (Hauteur 42px)"
         className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer group active:scale-95 ${
           isPillH && activeFocus.enabled
             ? 'bg-slate-900 text-white shadow-xs'
@@ -538,12 +538,12 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
         <Square className="w-3 h-3" />
       </button>
 
-      {/* Shape Tool 5: Cercle (55px × 55px) */}
+      {/* Shape Tool 5: Cercle (60px × 60px) */}
       <button
         type="button"
         id="ps-tool-circle"
         onClick={selectCircle}
-        title="Cercle / Rond (55px × 55px)"
+        title="Cercle / Rond (60px × 60px)"
         className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer group active:scale-95 ${
           isCircle && activeFocus.enabled
             ? 'bg-slate-900 text-white shadow-xs'
