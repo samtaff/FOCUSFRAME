@@ -54,7 +54,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const screenshotBoxRef = useRef<HTMLDivElement>(null);
   const [renderedDimensions, setRenderedDimensions] = useState<{ width: number; height: number }>({
     width: 204,
-    height: 450,
+    height: 490,
   });
   const [isDragging, setIsDragging] = useState(false);
   const [dragAction, setDragAction] = useState<
@@ -420,11 +420,20 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
 
   // Exact pixel conversion for active focus
   const curScreenW = renderedDimensions.width || 204;
-  const curScreenH = renderedDimensions.height || 450;
+  const curScreenH = renderedDimensions.height || 490;
   const activeFocusXPx = Math.round((activeFocus.x / 100) * curScreenW);
   const activeFocusYPx = Math.round((activeFocus.y / 100) * curScreenH);
   const activeFocusWPx = Math.round((activeFocus.width / 100) * curScreenW);
   const activeFocusHPx = Math.round((activeFocus.height / 100) * curScreenH);
+
+  // Dynamic frame dimensions based on target format preset
+  const targetFrameHeight = settings.exportFormat === 'height_490'
+    ? 490
+    : settings.exportFormat === 'height_450'
+      ? 450
+      : (settings.exportCustomHeight || 490);
+  const targetFrameWidth = Math.round(240 * (targetFrameHeight / 450));
+  const innerMaxHeight = Math.max(100, targetFrameHeight - settings.padding * 2);
 
   // Check centering alignments for active focus
   const isHorizontallyCentered =
@@ -468,13 +477,13 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           transformOrigin: 'center center',
         }}
       >
-        {/* Outer constraint wrapper: strictly max 240px wide with transparent checkboard preview */}
+        {/* Outer constraint wrapper with transparent checkboard preview */}
         <div
           id="preview-constraint-wrapper"
           className={`relative flex justify-center items-center select-none rounded-xl p-0.5 ${
             settings.bgType === 'transparent' ? 'bg-checkerboard shadow-inner' : ''
           }`}
-          style={{ maxWidth: '240px' }}
+          style={{ maxWidth: `${targetFrameWidth}px` }}
         >
           {/* Ruler overlay on canvas */}
           {showRulers && !isExporting && (
@@ -491,14 +500,14 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             />
           )}
 
-          {/* Exportable Frame Container customizable (border radius, padding, background) - Global total height 450px max */}
+          {/* Exportable Frame Container customizable (border radius, padding, background) */}
           <div
             ref={previewRef}
             id="exportable-frame"
             className="relative w-full overflow-visible transition-all duration-150 flex flex-col items-center justify-center"
             style={{
-              maxWidth: '240px',
-              maxHeight: '450px',
+              maxWidth: `${targetFrameWidth}px`,
+              maxHeight: `${targetFrameHeight}px`,
               borderRadius: `${settings.borderRadius}px`,
               padding: `${settings.padding}px`,
               backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
@@ -525,7 +534,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               className="relative w-full flex items-center justify-center bg-transparent transition-all duration-150"
               style={{
                 borderRadius: `${settings.screenshotRadius}px`,
-                maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                maxHeight: `${innerMaxHeight}px`,
                 boxShadow: getScreenshotShadowStyle(),
                 isolation: 'isolate',
               }}
@@ -535,7 +544,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 className="relative w-full overflow-hidden flex items-center justify-center bg-transparent"
                 style={{
                   borderRadius: `${settings.screenshotRadius}px`,
-                  maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                  maxHeight: `${innerMaxHeight}px`,
                 }}
               >
                 {/* Layer 1: Base Screenshot Image (With optional background blur) */}
@@ -545,7 +554,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   alt="Capture d'écran originale"
                   className="w-full h-auto block select-none pointer-events-none object-contain"
                   style={{
-                    maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                    maxHeight: `${innerMaxHeight}px`,
                     filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
                   }}
                   crossOrigin="anonymous"
@@ -567,7 +576,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       aria-hidden="true"
                       className="w-full h-auto block select-none pointer-events-none object-contain"
                       style={{
-                        maxHeight: `${Math.max(100, 450 - settings.padding * 2)}px`,
+                        maxHeight: `${innerMaxHeight}px`,
                       }}
                       crossOrigin="anonymous"
                       draggable={false}
@@ -580,7 +589,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   <svg
                     id="focus-dimming-svg"
                     className="absolute inset-0 w-full h-full pointer-events-none z-10"
-                    viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
+                    viewBox={`0 0 ${curScreenW} ${curScreenH}`}
                   >
                     {hasAnyFocusCutout ? (
                       <>
@@ -590,8 +599,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                             <rect
                               x="-100"
                               y="-100"
-                              width={(renderedDimensions.width || 204) + 200}
-                              height={(renderedDimensions.height || 450) + 200}
+                              width={curScreenW + 200}
+                              height={curScreenH + 200}
                               fill="white"
                             />
                             {/* Black cutout shapes ONLY for active FOCUS (non-blur) zones so focus zones stay 100% bright */}
@@ -638,8 +647,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                         <rect
                           x="-100"
                           y="-100"
-                          width={(renderedDimensions.width || 204) + 200}
-                          height={(renderedDimensions.height || 450) + 200}
+                          width={curScreenW + 200}
+                          height={curScreenH + 200}
                           fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
                           opacity={1 - settings.screenshotOpacity}
                           mask="url(#focus-cutout-mask)"
@@ -710,7 +719,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               <svg
                 id="focus-contour-border-svg"
                 className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
-                viewBox={`0 0 ${renderedDimensions.width || 204} ${renderedDimensions.height || 450}`}
+                viewBox={`0 0 ${curScreenW} ${curScreenH}`}
                 shapeRendering="geometricPrecision"
                 style={{ imageRendering: 'auto' }}
               >

@@ -76,8 +76,8 @@ const DEFAULT_SETTINGS: FrameSettings = {
   arrows: [],
   activeArrowIndex: 0,
   exportScale: 1,
-  exportFormat: 'height_450',
-  exportCustomHeight: 450,
+  exportFormat: 'height_490',
+  exportCustomHeight: 490,
   exportFileName: 'focusframe-export',
 };
 
@@ -182,7 +182,7 @@ export default function App() {
   const [currentImageSrc, setCurrentImageSrc] = useState<string>(SAMPLE_IMAGES[0].dataUrl);
   const [screenDimensions, setScreenDimensions] = useState<{ width: number; height: number }>({
     width: 204,
-    height: 450,
+    height: 490,
   });
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [copiedSuccess, setCopiedSuccess] = useState<boolean>(false);
@@ -416,7 +416,7 @@ export default function App() {
       const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
       const newZoneNumber = curFocuses.length + 1;
       const screenW = screenDimensions.width || 204;
-      const screenH = screenDimensions.height || 450;
+      const screenH = screenDimensions.height || 490;
 
       // Create a default 55px x 55px Circle or Pill zone offset vertically
       const circleSizeWPct = (55 / screenW) * 100;
@@ -459,7 +459,7 @@ export default function App() {
       const curFocuses = prev.focuses && prev.focuses.length > 0 ? [...prev.focuses] : [{ ...prev.focus }];
       const newZoneNumber = curFocuses.length + 1;
       const screenW = screenDimensions.width || 204;
-      const screenH = screenDimensions.height || 450;
+      const screenH = screenDimensions.height || 490;
 
       // Default blur area: horizontal pill / rounded rect across text or metrics
       const blurW = Math.min(screenW * 0.75, 140);
@@ -739,10 +739,12 @@ export default function App() {
 
         // Determine homothetic ratio
         let homotheticRatio = 1.0;
-        if (settings.exportFormat === 'height_450') {
+        if (settings.exportFormat === 'height_490') {
+          homotheticRatio = 490 / totalBaseH;
+        } else if (settings.exportFormat === 'height_450') {
           homotheticRatio = 450 / totalBaseH;
         } else if (settings.exportFormat === 'custom') {
-          homotheticRatio = (settings.exportCustomHeight || 450) / totalBaseH;
+          homotheticRatio = (settings.exportCustomHeight || 490) / totalBaseH;
         }
 
         const targetScale = homotheticRatio * scaleMultiplier;
@@ -1163,10 +1165,12 @@ export default function App() {
     const currentElemH = previewFrameRef.current.offsetHeight || 450;
 
     let homotheticRatio = 1.0;
-    if (settings.exportFormat === 'height_450') {
+    if (settings.exportFormat === 'height_490') {
+      homotheticRatio = 490 / currentElemH;
+    } else if (settings.exportFormat === 'height_450') {
       homotheticRatio = 450 / currentElemH;
     } else if (settings.exportFormat === 'custom') {
-      homotheticRatio = (settings.exportCustomHeight || 450) / currentElemH;
+      homotheticRatio = (settings.exportCustomHeight || 490) / currentElemH;
     }
 
     return Math.max(1, homotheticRatio * (baseScale || 2));

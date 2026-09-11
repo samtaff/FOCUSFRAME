@@ -70,7 +70,7 @@ export const PhotoshopToolbar: React.FC<PhotoshopToolbarProps> = ({
   onSelectActiveArrow,
   onRemoveArrow,
   screenW = 204,
-  screenH = 450,
+  screenH = 490,
   onSaveAs,
   onPreviewExport,
   showHandles = true,

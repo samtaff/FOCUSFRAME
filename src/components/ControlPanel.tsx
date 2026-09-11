@@ -80,7 +80,7 @@ interface ControlPanelProps {
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   settings,
-  screenDimensions = { width: 204, height: 450 },
+  screenDimensions = { width: 204, height: 490 },
   onUpdateSettings,
   onUpdateFocus,
   onSelectActiveFocus,
@@ -139,7 +139,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   };
 
   const screenW = screenDimensions.width || 204;
-  const screenH = screenDimensions.height || 450;
+  const screenH = screenDimensions.height || 490;
 
   // Convert percentage state to pixels for display (supports decimals e.g. 20.5)
   const focusXPx = Math.round(((focus.x / 100) * screenW) * 10) / 10;
@@ -2185,39 +2185,65 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <span>Format de sortie (Homothétique)</span>
               </div>
               <span className="text-[10.5px] font-mono font-bold text-slate-800 bg-white/90 px-2 py-0.5 rounded-md border border-black/10">
-                {settings.exportFormat === 'height_450' && 'Standard (450 px max)'}
+                {settings.exportFormat === 'height_490' && 'Standard (490 px max)'}
+                {settings.exportFormat === 'height_450' && 'Compact (450 px max)'}
                 {settings.exportFormat === 'custom' && `Sur mesure (H: ${settings.exportCustomHeight} px)`}
               </span>
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Conserve strictement les proportions de votre capture d'écran tout en calibrant la hauteur sur un standard de <strong>450 px max</strong>.
+              Conserve strictement les proportions de votre capture d'écran tout en calibrant la hauteur sur un standard de <strong>490 px max</strong> (ou 450 px / sur mesure).
             </p>
 
-            {/* Presets Grid - Standard 450px max and Custom */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            {/* Presets Grid - Standard 490px max, Compact 450px, and Custom */}
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <button
+                type="button"
+                id="btn-format-490"
+                onClick={() => onUpdateSettings({ exportFormat: 'height_490', exportCustomHeight: 490 })}
+                className={`p-2 rounded-lg border text-left cursor-pointer transition-all ${
+                  settings.exportFormat === 'height_490'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-white/90 text-slate-700 border-black/10 hover:bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">490 px</span>
+                  <span className={`text-[8.5px] px-1 py-0.2 rounded font-medium ${
+                    settings.exportFormat === 'height_490' ? 'bg-white/20 text-white' : 'bg-black/5 text-slate-600'
+                  }`}>
+                    Défaut
+                  </span>
+                </div>
+                <div className={`text-[9.5px] mt-0.5 line-clamp-1 ${
+                  settings.exportFormat === 'height_490' ? 'text-slate-300' : 'text-slate-400'
+                }`}>
+                  Standard
+                </div>
+              </button>
+
               <button
                 type="button"
                 id="btn-format-450"
                 onClick={() => onUpdateSettings({ exportFormat: 'height_450', exportCustomHeight: 450 })}
-                className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
+                className={`p-2 rounded-lg border text-left cursor-pointer transition-all ${
                   settings.exportFormat === 'height_450'
                     ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                     : 'bg-white/90 text-slate-700 border-black/10 hover:bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold">Standard (450px max)</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium ${
+                  <span className="text-xs font-semibold">450 px</span>
+                  <span className={`text-[8.5px] px-1 py-0.2 rounded font-medium ${
                     settings.exportFormat === 'height_450' ? 'bg-white/20 text-white' : 'bg-black/5 text-slate-600'
                   }`}>
-                    Défaut
+                    Compact
                   </span>
                 </div>
-                <div className={`text-[10px] mt-1 ${
+                <div className={`text-[9.5px] mt-0.5 line-clamp-1 ${
                   settings.exportFormat === 'height_450' ? 'text-slate-300' : 'text-slate-400'
                 }`}>
-                  Visuel global 450px max (homothétique)
+                  Compact
                 </div>
               </button>
 
@@ -2225,24 +2251,24 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 type="button"
                 id="btn-format-custom"
                 onClick={() => onUpdateSettings({ exportFormat: 'custom' })}
-                className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
+                className={`p-2 rounded-lg border text-left cursor-pointer transition-all ${
                   settings.exportFormat === 'custom'
                     ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                     : 'bg-white/90 text-slate-700 border-black/10 hover:bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold">Sur mesure</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium ${
+                  <span className="text-xs font-semibold">Libre</span>
+                  <span className={`text-[8.5px] px-1 py-0.2 rounded font-medium ${
                     settings.exportFormat === 'custom' ? 'bg-white/20 text-white' : 'bg-black/5 text-slate-600'
                   }`}>
-                    Libre
+                    {settings.exportCustomHeight}px
                   </span>
                 </div>
-                <div className={`text-[10px] mt-1 ${
+                <div className={`text-[9.5px] mt-0.5 line-clamp-1 ${
                   settings.exportFormat === 'custom' ? 'text-slate-300' : 'text-slate-400'
                 }`}>
-                  Hauteur libre ({settings.exportCustomHeight}px)
+                  Sur mesure
                 </div>
               </button>
             </div>
@@ -2260,7 +2286,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       max="3000"
                       step="10"
                       value={settings.exportCustomHeight}
-                      onChange={(e) => onUpdateSettings({ exportCustomHeight: Math.max(100, Math.min(4000, Number(e.target.value) || 450)) })}
+                      onChange={(e) => onUpdateSettings({ exportCustomHeight: Math.max(100, Math.min(4000, Number(e.target.value) || 490)) })}
                       className="w-18 px-2 py-0.5 text-xs font-mono font-bold text-center macos-input"
                     />
                     <span className="text-xs text-slate-500 font-mono">px</span>
@@ -2279,6 +2305,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="flex justify-between text-[10px] text-slate-400 font-mono">
                   <span>150 px</span>
                   <span>450 px</span>
+                  <span>490 px</span>
                   <span>1080 px</span>
                   <span>2160 px</span>
                 </div>

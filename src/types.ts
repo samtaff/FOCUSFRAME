@@ -43,7 +43,7 @@ export interface FocusRect {
   showHandles?: boolean;
 }
 
-export type ExportFormatPreset = 'height_450' | 'custom';
+export type ExportFormatPreset = 'height_490' | 'height_450' | 'custom';
 
 export interface ArrowAnnotation {
   id: string;
