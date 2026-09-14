@@ -217,7 +217,10 @@ export const ExportPreviewModal: React.FC<ExportPreviewModalProps> = ({
                 className={`rounded-lg object-contain shadow-2xl border border-black/5 dark:border-white/10 ${
                   zoomMode === 'fit' ? 'max-h-[60vh] max-w-[85vw]' : ''
                 }`}
-                style={{ imageRendering: 'auto' }}
+                style={{
+                  imageRendering: '-webkit-optimize-contrast',
+                  transform: 'translateZ(0)',
+                }}
               />
             </div>
           ) : (

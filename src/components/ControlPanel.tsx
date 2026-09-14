@@ -650,17 +650,59 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             />
           </div>
 
-          {/* Marge de sécurité du cadre (12px obligatoire) */}
-          <div className="space-y-1.5">
+          {/* Marge / Padding du plan de travail */}
+          <div className="space-y-1.5 pt-1">
             <div className="flex justify-between items-center text-xs mb-1">
-              <span className="text-slate-700 font-medium">Marge de sécurité du cadre</span>
-              <span className="text-slate-700 font-mono font-semibold bg-black/[0.04] border border-black/10 px-2 py-0.5 rounded text-[11px]">
-                12px (Fixe)
-              </span>
+              <span className="text-slate-700 font-medium">Marge du plan de travail</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  id="input-frame-padding"
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={settings.padding}
+                  onChange={(e) =>
+                    onUpdateSettings({
+                      padding: Math.max(0, Math.min(50, Number(e.target.value) || 0)),
+                    })
+                  }
+                  className="w-11 h-5 text-center font-mono font-semibold text-[11px] macos-input"
+                />
+                <span className="text-slate-400 font-mono text-[10px]">px</span>
+              </div>
             </div>
-            <p className="text-[10.5px] text-slate-500">
-              Marge de sécurité obligatoirement fixée à 12px pour garantir un cadrage parfait sans coupure.
-            </p>
+            <input
+              id="slider-frame-padding"
+              type="range"
+              min="0"
+              max="50"
+              step="1"
+              value={settings.padding}
+              onChange={(e) => onUpdateSettings({ padding: Number(e.target.value) })}
+              className="macos-slider"
+            />
+            {/* Quick Presets for Frame Padding */}
+            <div className="flex items-center gap-1 pt-0.5">
+              {[
+                { label: '0px (Direct)', val: 0 },
+                { label: '8px', val: 8 },
+                { label: '12px', val: 12 },
+                { label: '20px', val: 20 },
+              ].map((p) => (
+                <button
+                  key={p.val}
+                  type="button"
+                  onClick={() => onUpdateSettings({ padding: p.val })}
+                  className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors cursor-pointer ${
+                    settings.padding === p.val
+                      ? 'bg-slate-900 text-white border-slate-900 font-bold'
+                      : 'bg-black/[0.03] hover:bg-black/[0.06] text-slate-600 border-black/10'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Style d'atténuation (Sombre vs Clair) */}

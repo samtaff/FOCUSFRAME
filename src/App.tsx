@@ -31,19 +31,21 @@ import {
   ArrowUp,
   ArrowDown,
   MousePointer,
+  Square,
+  Smartphone,
 } from 'lucide-react';
 
 const INITIAL_FOCUS_1: FocusRect = {
   id: 'focus-1',
   name: 'Zone 1',
   enabled: true,
-  shape: 'pill',
+  shape: 'rounded',
   x: -2.5,
-  y: 35.0,
+  y: 35.8,
   width: 104.9,
-  height: 8.6,
+  height: 6.4,
   margin: 0,
-  radius: 999,
+  radius: 12,
   showBorder: true,
   borderColor: '#cc0000',
   borderWidth: 2,
@@ -685,8 +687,44 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (e) => {
       if (typeof e.target?.result === 'string') {
-        setCurrentImageSrc(e.target.result);
-        showToast('Image importée avec succès (format compatible) !', 'success');
+        const rawDataUrl = e.target.result;
+        // Normalize image to standard sRGB 24-bit at full native resolution
+        // (Solves the Display P3 48-bit color profile and sub-sampling blur in Chromium)
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const normCanvas = document.createElement('canvas');
+            normCanvas.width = img.naturalWidth;
+            normCanvas.height = img.naturalHeight;
+            const ctx = normCanvas.getContext('2d', { colorSpace: 'srgb', willReadFrequently: true });
+            if (ctx) {
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(img, 0, 0);
+              const normalizedDataUrl = normCanvas.toDataURL('image/png');
+              setCurrentImageSrc(normalizedDataUrl);
+              setSettings((prev) => ({
+                ...prev,
+                screenshotRadius: prev.screenshotRadius === 0 ? 15 : prev.screenshotRadius,
+              }));
+              showToast(`Capture importée en haute netteté (${img.naturalWidth}×${img.naturalHeight} px, sRGB) !`, 'success');
+              return;
+            }
+          } catch {
+            // Fallback to original DataURL
+          }
+          setCurrentImageSrc(rawDataUrl);
+          setSettings((prev) => ({
+            ...prev,
+            screenshotRadius: prev.screenshotRadius === 0 ? 15 : prev.screenshotRadius,
+          }));
+          showToast('Image importée avec succès !', 'success');
+        };
+        img.onerror = () => {
+          setCurrentImageSrc(rawDataUrl);
+          showToast('Image importée avec succès !', 'success');
+        };
+        img.src = rawDataUrl;
       }
     };
     reader.readAsDataURL(file);
@@ -729,26 +767,24 @@ export default function App() {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        // Base preview width is 240
-        const baseW = 240;
+        // Target total height based on format preset
+        const targetTotalH = settings.exportFormat === 'height_490'
+          ? 490
+          : settings.exportFormat === 'height_450'
+            ? 450
+            : (settings.exportCustomHeight || 490);
+
         const padBase = settings.padding || 0;
-        const innerWBase = baseW - padBase * 2;
-        const aspect = img.naturalHeight / img.naturalWidth || 1.8;
-        const innerHBase = innerWBase * aspect;
-        const totalBaseH = innerHBase + padBase * 2;
+        const innerHBase = Math.max(50, targetTotalH - padBase * 2);
+        const imgAspect = (img.naturalWidth && img.naturalHeight)
+          ? (img.naturalWidth / img.naturalHeight)
+          : (204 / 490);
+        const innerWBase = Math.round(innerHBase * imgAspect);
+        const totalBaseW = innerWBase + padBase * 2;
+        const totalBaseH = targetTotalH;
 
-        // Determine homothetic ratio
-        let homotheticRatio = 1.0;
-        if (settings.exportFormat === 'height_490') {
-          homotheticRatio = 490 / totalBaseH;
-        } else if (settings.exportFormat === 'height_450') {
-          homotheticRatio = 450 / totalBaseH;
-        } else if (settings.exportFormat === 'custom') {
-          homotheticRatio = (settings.exportCustomHeight || 490) / totalBaseH;
-        }
-
-        const targetScale = homotheticRatio * scaleMultiplier;
-        const targetW = Math.max(1, Math.round(baseW * targetScale));
+        const targetScale = scaleMultiplier;
+        const targetW = Math.max(1, Math.round(totalBaseW * targetScale));
         const targetH = Math.max(1, Math.round(totalBaseH * targetScale));
 
         // Vector & Stroke Anti-Aliasing via Super-Sampled Anti-Aliasing (SSAA):
@@ -1417,7 +1453,7 @@ export default function App() {
             <div className="flex items-center gap-2 font-medium text-slate-800">
               <span className="font-semibold tracking-tight uppercase">Scène de Prévisualisation</span>
               <span className="text-[10px] px-2 py-0.5 bg-black/[0.04] border border-black/10 text-slate-600 rounded-md font-mono font-medium shadow-2xs">
-                240 px
+                {screenDimensions.width} × {screenDimensions.height} px
               </span>
             </div>
 
@@ -1596,6 +1632,41 @@ export default function App() {
                     <span className="text-[10px]">Recentrer</span>
                   </button>
                 )}
+
+                <div className="w-[1px] h-3.5 bg-slate-300 mx-0.5" />
+
+                {/* Quick Toggle for Screenshot Radius (0px Droits vs 15px Arrondis Mobile) */}
+                <button
+                  type="button"
+                  id="btn-quick-toggle-radius"
+                  onClick={() =>
+                    handleUpdateSettings({
+                      screenshotRadius: (settings.screenshotRadius ?? 15) === 0 ? 15 : 0,
+                    })
+                  }
+                  title={
+                    (settings.screenshotRadius ?? 15) === 0
+                      ? 'Coins droits 90° nets (0px, sans rognage). Cliquer pour arrondir (15px).'
+                      : 'Coins arrondis style smartphone (15px). Cliquer pour passer en coins droits nets (0px).'
+                  }
+                  className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md font-medium transition-all cursor-pointer ${
+                    (settings.screenshotRadius ?? 15) === 0
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white bg-slate-100/80 border border-black/5'
+                  }`}
+                >
+                  {(settings.screenshotRadius ?? 15) === 0 ? (
+                    <>
+                      <Square className="w-3 h-3 text-emerald-400" />
+                      <span className="text-[10px]">Angles droits (0px)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Smartphone className="w-3 h-3 text-slate-500" />
+                      <span className="text-[10px]">Coins arrondis (15px)</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1617,7 +1688,7 @@ export default function App() {
                 : ''
             }`}
           >
-            {/* Container for the 240px constrained card (macOS Frosted Tile) */}
+            {/* Container for the plan de travail (macOS Frosted Tile) */}
             <div
               className={`relative z-10 w-full flex flex-col items-center justify-center p-8 sm:p-10 lg:p-12 macos-card bg-canvas-dots min-h-[540px] xl:min-h-[620px] ${
                 zoom > 1.0 ? 'max-w-none' : 'max-w-[480px] xl:max-w-[540px]'

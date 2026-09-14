@@ -28,6 +28,54 @@ interface PreviewCanvasProps {
   onUpdateGuides?: (guides: GuideLine[]) => void;
 }
 
+// Generates clean SVG evenodd cutout path for dimming overlay without mask corruption
+function generateDimmingOverlayPath(
+  width: number,
+  height: number,
+  focuses: FocusRect[]
+): string {
+  // Outer rectangle covering the screenshot
+  let path = `M 0 0 H ${width} V ${height} H 0 Z`;
+
+  // Cutout subpaths for active non-blur focus zones
+  focuses.forEach((f) => {
+    if (!f.enabled || f.mode === 'blur') return;
+    const fx = (f.x / 100) * width;
+    const fy = (f.y / 100) * height;
+    const fw = (f.width / 100) * width;
+    const fh = (f.height / 100) * height;
+
+    if (fw <= 0 || fh <= 0) return;
+
+    if (f.shape === 'circle') {
+      const cx = fx + fw / 2;
+      const cy = fy + fh / 2;
+      const rx = Math.max(0.1, fw / 2);
+      const ry = Math.max(0.1, fh / 2);
+      path += ` M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0 Z`;
+    } else {
+      let r = 0;
+      if (f.shape === 'pill') {
+        r = Math.min(fw, fh) / 2;
+      } else if (f.shape === 'rectangle') {
+        r = 0;
+      } else {
+        r = Math.min(f.radius, fw / 2, fh / 2);
+      }
+
+      if (r <= 0.1) {
+        path += ` M ${fx} ${fy} h ${fw} v ${fh} h ${-fw} Z`;
+      } else {
+        const wStraight = Math.max(0, fw - 2 * r);
+        const hStraight = Math.max(0, fh - 2 * r);
+        path += ` M ${fx + r} ${fy} h ${wStraight} a ${r} ${r} 0 0 1 ${r} ${r} v ${hStraight} a ${r} ${r} 0 0 1 ${-r} ${r} h ${-wStraight} a ${r} ${r} 0 0 1 ${-r} ${-r} v ${-hStraight} a ${r} ${r} 0 0 1 ${r} ${-r} Z`;
+      }
+    }
+  });
+
+  return path;
+}
+
 export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   settings,
   imageSrc,
@@ -56,6 +104,19 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     width: 204,
     height: 490,
   });
+  const [imageNaturalRatio, setImageNaturalRatio] = useState<number>(204 / 490);
+
+  // Load natural dimensions of current image for direct cadrage
+  useEffect(() => {
+    if (!imageSrc) return;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        setImageNaturalRatio(img.naturalWidth / img.naturalHeight);
+      }
+    };
+    img.src = imageSrc;
+  }, [imageSrc]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragAction, setDragAction] = useState<
     'move' | 'nw' | 'ne' | 'se' | 'sw' | 'e' | 'w' | 'n' | 's' | null
@@ -90,11 +151,6 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   );
   const activeFocus = allFocuses[activeFocusIndex] || allFocuses[0] || settings.focus;
 
-  const supportsZoom =
-    typeof CSS !== 'undefined' &&
-    typeof CSS.supports === 'function' &&
-    CSS.supports('zoom', '1');
-
   // Observe actual screenshot rendered dimensions with subpixel accuracy
   useEffect(() => {
     if (!screenshotBoxRef.current) return;
@@ -102,22 +158,24 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       if (screenshotBoxRef.current) {
         const box = screenshotBoxRef.current;
         const rect = box.getBoundingClientRect();
-        const currentZoom = supportsZoom ? (zoom || 1) : 1;
-        // Always measure intrinsic layout dimensions (independent of zoom scale)
-        const w = Math.round(box.offsetWidth || (rect.width / currentZoom) || 204);
-        const h = Math.round(box.offsetHeight || (rect.height / currentZoom) || 490);
-        setRenderedDimensions({ width: w, height: h });
+        const currentZoom = zoom || 1;
+        // Physical on-screen rendered dimensions for canvas vector layers and SVG overlays
+        const currentPhysicalW = Math.round(rect.width || box.offsetWidth || 204);
+        const currentPhysicalH = Math.round(rect.height || box.offsetHeight || 490);
+        setRenderedDimensions({ width: currentPhysicalW, height: currentPhysicalH });
+        // The unscaled baseline dimensions for status bar & preset indicators in parent
+        const unscaledW = Math.round(currentPhysicalW / currentZoom);
+        const unscaledH = Math.round(currentPhysicalH / currentZoom);
         if (onDimensionsChange) {
-          onDimensionsChange({ width: w, height: h });
+          onDimensionsChange({ width: unscaledW, height: unscaledH });
         }
       }
     };
-
     updateDims();
     const observer = new ResizeObserver(updateDims);
     observer.observe(screenshotBoxRef.current);
     return () => observer.disconnect();
-  }, [onDimensionsChange, imageSrc, settings.padding, zoom, supportsZoom]);
+  }, [onDimensionsChange, imageSrc, settings.padding, settings.exportFormat, settings.exportCustomHeight, zoom, imageNaturalRatio]);
 
   // Background style computation
   const getBackgroundStyle = () => {
@@ -133,17 +191,17 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     return {};
   };
 
-  const getScreenshotShadowStyle = () => {
+  const getScreenshotShadowStyle = (scale = 1.0) => {
     if (settings.shadowSettings && settings.shadowSettings.enabled) {
       const { color, opacity, offsetX, offsetY, blur } = settings.shadowSettings;
       const hex = (color || '#000000').replace('#', '');
       const r = parseInt(hex.substring(0, 2), 16) || 0;
       const g = parseInt(hex.substring(2, 4), 16) || 0;
       const b = parseInt(hex.substring(4, 6), 16) || 0;
-      return `${offsetX ?? 2}px ${offsetY ?? 3}px ${blur ?? 9}px rgba(${r}, ${g}, ${b}, ${opacity ?? 0.50})`;
+      return `${Math.round((offsetX ?? 2) * scale)}px ${Math.round((offsetY ?? 3) * scale)}px ${Math.round((blur ?? 9) * scale)}px rgba(${r}, ${g}, ${b}, ${opacity ?? 0.50})`;
     }
     if (settings.shadow === 'none') return 'none';
-    return '2px 3px 9px rgba(0, 0, 0, 0.50)';
+    return `${Math.round(2 * scale)}px ${Math.round(3 * scale)}px ${Math.round(9 * scale)}px rgba(0, 0, 0, 0.50)`;
   };
 
   // Mouse & Touch handling for direct on-canvas drag & resize with magnetic snapping
@@ -427,22 +485,36 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     }
   }, [isDraggingArrow, handleArrowPointerMove, handleArrowPointerUp]);
 
-  // Exact pixel conversion for active focus
-  const curScreenW = renderedDimensions.width || 204;
-  const curScreenH = renderedDimensions.height || 490;
-  const activeFocusXPx = Math.round((activeFocus.x / 100) * curScreenW);
-  const activeFocusYPx = Math.round((activeFocus.y / 100) * curScreenH);
-  const activeFocusWPx = Math.round((activeFocus.width / 100) * curScreenW);
-  const activeFocusHPx = Math.round((activeFocus.height / 100) * curScreenH);
-
   // Dynamic frame dimensions based on target format preset
-  const targetFrameHeight = settings.exportFormat === 'height_490'
+  const baseFrameHeight = settings.exportFormat === 'height_490'
     ? 490
     : settings.exportFormat === 'height_450'
       ? 450
       : (settings.exportCustomHeight || 490);
-  const targetFrameWidth = Math.round(240 * (targetFrameHeight / 450));
-  const innerMaxHeight = Math.max(100, targetFrameHeight - settings.padding * 2);
+  const baseInnerMaxHeight = Math.max(100, baseFrameHeight - settings.padding * 2);
+
+  // High-fidelity physical layout zoom:
+  // Instead of scaling an already downsampled 204px bitmap buffer via GPU transforms (which produces mosaic blur/pixelation),
+  // we scale the physical layout dimensions of the container directly with `zoom`.
+  const effectiveZoom = isExporting ? 1.0 : (zoom || 1.0);
+  const innerMaxHeight = Math.max(100, Math.round(baseInnerMaxHeight * effectiveZoom));
+  const currentPadding = Math.round(settings.padding * effectiveZoom);
+  const currentBorderRadius = Math.round(settings.borderRadius * effectiveZoom);
+  const currentScreenshotRadius = Math.round((settings.screenshotRadius ?? 15) * effectiveZoom);
+
+  // Option 3: Cadrage direct sans bandes latérales artificielles
+  const curScreenH = innerMaxHeight;
+  const curScreenW = Math.round(curScreenH * imageNaturalRatio);
+
+  // Frame width and height match the screenshot + padding on each side (Cadrage direct)
+  const targetFrameWidth = Math.round(curScreenW + currentPadding * 2);
+  const targetFrameHeight = Math.round(curScreenH + currentPadding * 2);
+
+  // Exact pixel conversion for active focus
+  const activeFocusXPx = Math.round((activeFocus.x / 100) * curScreenW);
+  const activeFocusYPx = Math.round((activeFocus.y / 100) * curScreenH);
+  const activeFocusWPx = Math.round((activeFocus.width / 100) * curScreenW);
+  const activeFocusHPx = Math.round((activeFocus.height / 100) * curScreenH);
 
   // Check centering alignments for active focus
   const isHorizontallyCentered =
@@ -478,30 +550,24 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       {/* Zoomable & Pannable Container with crisp vector rasterization */}
       <div
         id="preview-zoom-wrapper"
-        className="transition-transform duration-75 ease-out select-none will-change-transform flex items-center justify-center pointer-events-auto"
+        className="select-none flex items-center justify-center pointer-events-auto shrink-0"
         style={
           isExporting
             ? undefined
-            : supportsZoom
-            ? {
-                transform: `translate(${pan.x}px, ${pan.y}px)`,
-                zoom: zoom,
-                transformOrigin: 'center center',
-              }
             : {
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transformOrigin: 'center center',
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
               }
         }
       >
-        {/* Outer constraint wrapper with transparent checkboard preview */}
+        {/* Outer constraint wrapper with transparency checkerboard preview */}
         <div
           id="preview-constraint-wrapper"
-          className={`relative flex justify-center items-center select-none rounded-xl p-0.5 ${
+          className={`relative flex justify-center items-center select-none rounded-xl shrink-0 ${
             settings.bgType === 'transparent' ? 'bg-checkerboard shadow-inner' : ''
           }`}
           style={{
             maxWidth: `${targetFrameWidth}px`,
+            width: `${targetFrameWidth}px`,
           }}
         >
           {/* Ruler overlay on canvas */}
@@ -509,12 +575,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             <Rulers
               screenshotWidth={curScreenW}
               screenshotHeight={curScreenH}
-              padding={settings.padding}
+              padding={currentPadding}
               focusX={activeFocusXPx}
               focusY={activeFocusYPx}
               focusW={activeFocusWPx}
               focusH={activeFocusHPx}
-              zoom={1.0}
+              zoom={effectiveZoom}
               onStartDragNewGuide={handleStartDragNewGuide}
             />
           )}
@@ -523,12 +589,14 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           <div
             ref={previewRef}
             id="exportable-frame"
-            className="relative w-full overflow-visible flex flex-col items-center justify-center"
+            className="relative overflow-visible flex flex-col items-center justify-center shrink-0"
             style={{
+              width: `${targetFrameWidth}px`,
               maxWidth: `${targetFrameWidth}px`,
+              height: `${targetFrameHeight}px`,
               maxHeight: `${targetFrameHeight}px`,
-              borderRadius: `${settings.borderRadius}px`,
-              padding: `${settings.padding}px`,
+              borderRadius: `${currentBorderRadius}px`,
+              padding: `${currentPadding}px`,
               backgroundColor: settings.bgType === 'transparent' ? 'transparent' : undefined,
               ...getBackgroundStyle(),
             }}
@@ -540,9 +608,9 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 onUpdateGuides={onUpdateGuides}
                 screenshotWidth={curScreenW}
                 screenshotHeight={curScreenH}
-                padding={settings.padding}
+                padding={currentPadding}
                 isExporting={isExporting}
-                zoom={zoom}
+                zoom={effectiveZoom}
               />
             )}
 
@@ -550,20 +618,19 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             <div
               ref={screenshotBoxRef}
               id="screenshot-wrapper"
-              className="relative w-full flex items-center justify-center bg-transparent"
+              className="relative flex items-center justify-center bg-transparent shrink-0"
               style={{
-                borderRadius: `${settings.screenshotRadius}px`,
-                maxHeight: `${innerMaxHeight}px`,
-                boxShadow: getScreenshotShadowStyle(),
-                isolation: 'isolate',
+                width: `${curScreenW}px`,
+                height: `${curScreenH}px`,
+                borderRadius: `${currentScreenshotRadius}px`,
+                boxShadow: getScreenshotShadowStyle(effectiveZoom),
               }}
             >
               {/* Inner screenshot clipping wrapper with screenshot radius */}
               <div
-                className="relative w-full overflow-hidden flex items-center justify-center bg-transparent"
+                className="relative w-full h-full overflow-hidden flex items-center justify-center bg-transparent"
                 style={{
-                  borderRadius: `${settings.screenshotRadius}px`,
-                  maxHeight: `${innerMaxHeight}px`,
+                  borderRadius: `${currentScreenshotRadius}px`,
                 }}
               >
                 {/* Layer 1: Base Screenshot Image (With optional background blur) */}
@@ -571,11 +638,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   id="target-screenshot-img"
                   src={imageSrc}
                   alt="Capture d'écran originale"
-                  className="w-full h-auto block select-none pointer-events-none object-contain"
+                  className="w-full h-full block select-none pointer-events-none object-cover"
                   style={{
-                    maxHeight: `${innerMaxHeight}px`,
-                    filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
-                    imageRendering: 'auto',
+                    borderRadius: `${currentScreenshotRadius}px`,
+                    filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur * effectiveZoom}px)` : undefined,
+                    imageRendering: '-webkit-optimize-contrast',
+                    transform: 'translateZ(0)',
                   }}
                   crossOrigin="anonymous"
                   draggable={false}
@@ -600,7 +668,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                             } else if (f.shape === 'rectangle') {
                               fRadius = 0;
                             } else {
-                              fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                              fRadius = Math.min(f.radius * effectiveZoom, fExactW / 2, fExactH / 2);
                             }
 
                             return f.shape === 'circle' ? (
@@ -650,86 +718,19 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   </>
                 )}
 
-                {/* Layer 2: SVG Mask Dimming Overlay (Dimmable everywhere except cutout shapes) */}
+                {/* Layer 2: Vector Dimming Overlay with Cutout Shapes (Evenodd rule, crisp at all zoom levels) */}
                 {settings.screenshotOpacity < 1.0 && (
                   <svg
                     id="focus-dimming-svg"
                     className="absolute inset-0 w-full h-full pointer-events-none z-10"
                     viewBox={`0 0 ${curScreenW} ${curScreenH}`}
                   >
-                    {hasAnyFocusCutout ? (
-                      <>
-                        <defs>
-                          <mask id="focus-cutout-mask">
-                            {/* White base = fully dimmed background */}
-                            <rect
-                              x="-100"
-                              y="-100"
-                              width={curScreenW + 200}
-                              height={curScreenH + 200}
-                              fill="white"
-                            />
-                            {/* Black cutout shapes ONLY for active FOCUS (non-blur) zones so focus zones stay 100% bright */}
-                            {allFocuses.map((f, idx) => {
-                              if (!f.enabled || f.mode === 'blur') return null;
-                              const fExactX = (f.x / 100) * curScreenW;
-                              const fExactY = (f.y / 100) * curScreenH;
-                              const fExactW = (f.width / 100) * curScreenW;
-                              const fExactH = (f.height / 100) * curScreenH;
-
-                              let fRadius = 0;
-                              if (f.shape === 'pill' || f.shape === 'circle') {
-                                fRadius = Math.min(fExactW, fExactH) / 2;
-                              } else if (f.shape === 'rectangle') {
-                                fRadius = 0;
-                              } else {
-                                fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
-                              }
-
-                              return f.shape === 'circle' ? (
-                                <ellipse
-                                  key={`cutout-${f.id || idx}`}
-                                  cx={fExactX + fExactW / 2}
-                                  cy={fExactY + fExactH / 2}
-                                  rx={Math.max(0.1, fExactW / 2)}
-                                  ry={Math.max(0.1, fExactH / 2)}
-                                  fill="black"
-                                />
-                              ) : (
-                                <rect
-                                  key={`cutout-${f.id || idx}`}
-                                  x={fExactX}
-                                  y={fExactY}
-                                  width={Math.max(0.1, fExactW)}
-                                  height={Math.max(0.1, fExactH)}
-                                  rx={fRadius}
-                                  ry={fRadius}
-                                  fill="black"
-                                />
-                              );
-                            })}
-                          </mask>
-                        </defs>
-                        <rect
-                          x="-100"
-                          y="-100"
-                          width={curScreenW + 200}
-                          height={curScreenH + 200}
-                          fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
-                          opacity={1 - settings.screenshotOpacity}
-                          mask="url(#focus-cutout-mask)"
-                        />
-                      </>
-                    ) : (
-                      <rect
-                        x="-100"
-                        y="-100"
-                        width={(renderedDimensions.width || 204) + 200}
-                        height={(renderedDimensions.height || 450) + 200}
-                        fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
-                        opacity={1 - settings.screenshotOpacity}
-                      />
-                    )}
+                    <path
+                      d={generateDimmingOverlayPath(curScreenW, curScreenH, allFocuses)}
+                      fillRule="evenodd"
+                      fill={settings.dimmingType === 'light' ? '#ffffff' : '#000000'}
+                      opacity={1 - settings.screenshotOpacity}
+                    />
                   </svg>
                 )}
 
@@ -791,7 +792,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               >
                 {allFocuses.map((f, idx) => {
                   if (!f.enabled || !f.showBorder) return null;
-                  const bWidth = f.borderWidth || 2;
+                  const bWidth = Math.max(1, Math.round((f.borderWidth || 2) * effectiveZoom));
                   const pixelOffset = bWidth % 2 === 1 ? 0.5 : 0;
                   const fExactX = Math.round(((f.x / 100) * curScreenW) * 10) / 10;
                   const fExactY = Math.round((f.y / 100) * curScreenH) + pixelOffset;
@@ -804,7 +805,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                   } else if (f.shape === 'rectangle') {
                     fRadius = 0;
                   } else {
-                    fRadius = Math.min(f.radius, fExactW / 2, fExactH / 2);
+                    fRadius = Math.min(f.radius * effectiveZoom, fExactW / 2, fExactH / 2);
                   }
 
                   return f.shape === 'circle' ? (
@@ -816,7 +817,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       ry={Math.max(0.1, fExactH / 2)}
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
-                      strokeWidth={f.borderWidth || 2}
+                      strokeWidth={bWidth}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
@@ -832,7 +833,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       ry={fRadius}
                       fill="none"
                       stroke={f.borderColor || '#cc0000'}
-                      strokeWidth={f.borderWidth || 2}
+                      strokeWidth={bWidth}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeDasharray={f.borderStyle === 'dashed' ? '4 4' : undefined}
@@ -895,7 +896,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                           ? '50%'
                           : f.shape === 'rectangle'
                           ? '0px'
-                          : `${f.radius}px`,
+                          : `${f.radius * effectiveZoom}px`,
                       border:
                         !f.showBorder && !isExporting
                           ? !showHandlesForZone
@@ -1022,7 +1023,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     if (!arrow.enabled) return null;
                     const cx = (arrow.x / 100) * curScreenW;
                     const cy = (arrow.y / 100) * curScreenH;
-                    const pathD = getArrowSvgPath(arrow);
+                    const pathD = getArrowSvgPath(arrow, effectiveZoom);
 
                     return (
                       <g
@@ -1043,8 +1044,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 arrows.map((arrow, idx) => {
                   if (!arrow.enabled) return null;
                   const isArrowActive = idx === (activeArrowIndex ?? 0);
-                  const L = arrow.size || 40;
-                  const boxSize = Math.max(L, arrow.headWidth || 16) + 16;
+                  const L = (arrow.size || 40) * effectiveZoom;
+                  const boxSize = Math.max(L, (arrow.headWidth || 16) * effectiveZoom) + 16 * effectiveZoom;
 
                   return (
                     <div
