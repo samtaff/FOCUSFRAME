@@ -1405,6 +1405,21 @@ export default function App() {
             </div>
             <span className="text-sm font-bold tracking-wider text-slate-900 uppercase">FOCUSFRAME</span>
           </div>
+
+          <div className="w-[1px] h-4 bg-slate-300/80 mx-0.5" />
+
+          {/* Lien Focus Studio Pro (ouvre dans le même onglet) */}
+          <a
+            id="btn-link-focus-studio-pro"
+            href="https://focusstudiopro.vercel.app/"
+            target="_self"
+            rel="noopener noreferrer"
+            title="Accéder à Focus Studio Pro"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-800 bg-white/80 hover:bg-white hover:text-blue-600 border border-black/[0.08] hover:border-blue-400/50 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+          >
+            <span>Focus Studio Pro</span>
+            <ExternalLink className="w-3.5 h-3.5 text-slate-500 hover:text-blue-600 transition-colors" />
+          </a>
         </div>
       </header>
 
