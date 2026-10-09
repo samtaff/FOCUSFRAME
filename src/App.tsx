@@ -1737,11 +1737,17 @@ export default function App() {
 
           {/* Canvas Bottom Tips */}
           <div className="w-full mt-4 pt-3 border-t border-black/[0.06] text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
+            <span className="flex items-center gap-1.5 text-slate-600 font-medium flex-wrap">
               <Focus className="w-3.5 h-3.5 text-slate-700" />
-              Navigation : Maintenez <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Espace</kbd> + Clic gauche pour vous déplacer librement. Zoom : <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Ctrl</kbd> + Molette.
+              <span>
+                Objets : <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Flèches</kbd> pour déplacer (1px) • <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Alt + Flèches</kbd> pour micro-précision (0.1px).
+              </span>
+              <span className="text-slate-400">|</span>
+              <span>
+                Canevas : <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Espace</kbd> + Clic ou Outil Main. Zoom : <kbd className="px-1.5 py-0.5 bg-black/[0.06] border border-black/10 rounded font-mono text-[10px] text-slate-700">Ctrl</kbd> + Molette.
+              </span>
             </span>
-            <span className="font-mono text-[11px] text-slate-400">Export PNG HD</span>
+            <span className="font-mono text-[11px] text-slate-400 shrink-0">Export PNG HD</span>
           </div>
         </section>
 

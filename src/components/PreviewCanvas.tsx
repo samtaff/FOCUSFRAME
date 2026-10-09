@@ -522,6 +522,114 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const isVerticallyCentered =
     Math.abs(activeFocus.y + activeFocus.height / 2 - 50) < 0.6 || isSnappedY;
 
+  // Global Arrow Navigation: Permet de déplacer l'objet actif (zone de focus/flou ou flèche) avec les flèches du clavier
+  // Touche Alt : Micro-précision (0.1px), Touche Shift : Grand déplacement (10px), Normal : 1px
+  useEffect(() => {
+    const handleGlobalArrowKeyDown = (e: KeyboardEvent) => {
+      // Ignorer si on écrit dans un champ texte
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (isExporting || isHandToolActive) return;
+
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        return;
+      }
+
+      // Calcul de la taille de l'écran en pixels
+      const screenW = curScreenW || 204;
+      const screenH = curScreenH || 490;
+
+      // Standard: 1px, Alt: 0.1px (micro-ajustement ultra-précis), Shift: 10px
+      const stepPx = e.altKey ? 0.1 : e.shiftKey ? 10 : 1;
+      const stepXPct = (stepPx / screenW) * 100;
+      const stepYPct = (stepPx / screenH) * 100;
+
+      let deltaX = 0;
+      let deltaY = 0;
+      if (e.key === 'ArrowLeft') deltaX = -stepXPct;
+      if (e.key === 'ArrowRight') deltaX = stepXPct;
+      if (e.key === 'ArrowUp') deltaY = -stepYPct;
+      if (e.key === 'ArrowDown') deltaY = stepYPct;
+
+      // Si une flèche est active et sélectionnée
+      const curArrows = arrows || [];
+      const hasActiveArrow =
+        curArrows.length > 0 &&
+        activeArrowIndex !== undefined &&
+        activeArrowIndex >= 0 &&
+        activeArrowIndex < curArrows.length &&
+        curArrows[activeArrowIndex]?.enabled;
+
+      // Déterminer la cible : si l'élément focusé dans le DOM est une flèche, ou si la flèche est sélectionnée
+      const activeElem = document.activeElement as HTMLElement | null;
+      const isFocusedOnArrow = activeElem?.id?.startsWith('interactive-arrow-');
+
+      if (isFocusedOnArrow && hasActiveArrow && onUpdateArrow) {
+        e.preventDefault();
+        const currentArrow = curArrows[activeArrowIndex];
+        const newX = Math.round((currentArrow.x + deltaX) * 1000) / 1000;
+        const newY = Math.round((currentArrow.y + deltaY) * 1000) / 1000;
+        onUpdateArrow(
+          {
+            x: Math.max(0, Math.min(100, newX)),
+            y: Math.max(0, Math.min(100, newY)),
+          },
+          activeArrowIndex
+        );
+        return;
+      }
+
+      // Par défaut ou si une zone de focus/flou est active
+      if (activeFocus && activeFocus.enabled) {
+        e.preventDefault();
+        onUpdateFocus(
+          {
+            x: Math.round((activeFocus.x + deltaX) * 1000) / 1000,
+            y: Math.round((activeFocus.y + deltaY) * 1000) / 1000,
+          },
+          activeFocusIndex
+        );
+        return;
+      }
+
+      // Repli vers la flèche active si aucune zone n'est active
+      if (hasActiveArrow && onUpdateArrow) {
+        e.preventDefault();
+        const currentArrow = curArrows[activeArrowIndex];
+        const newX = Math.round((currentArrow.x + deltaX) * 1000) / 1000;
+        const newY = Math.round((currentArrow.y + deltaY) * 1000) / 1000;
+        onUpdateArrow(
+          {
+            x: Math.max(0, Math.min(100, newX)),
+            y: Math.max(0, Math.min(100, newY)),
+          },
+          activeArrowIndex
+        );
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalArrowKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalArrowKeyDown);
+  }, [
+    activeFocus,
+    activeFocusIndex,
+    arrows,
+    activeArrowIndex,
+    curScreenW,
+    curScreenH,
+    isExporting,
+    isHandToolActive,
+    onUpdateFocus,
+    onUpdateArrow,
+  ]);
+
   // Handle dragging out a new guide from ruler
   const handleStartDragNewGuide = (
     orientation: 'horizontal' | 'vertical',
@@ -921,7 +1029,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                       ) {
                         e.preventDefault();
                         e.stopPropagation();
-                        const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                        // Standard: 1px, Précision Alt: 0.1px (micro-ajustement), Grand pas Shift: 10px
+                        const stepPx = e.altKey ? 0.1 : e.shiftKey ? 10 : 1;
                         const stepXPct = (stepPx / curScreenW) * 100;
                         const stepYPct = (stepPx / curScreenH) * 100;
 
@@ -1062,7 +1171,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                         ) {
                           e.preventDefault();
                           e.stopPropagation();
-                          const stepPx = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                          // Standard: 1px, Précision Alt: 0.1px (micro-ajustement), Grand pas Shift: 10px
+                          const stepPx = e.altKey ? 0.1 : e.shiftKey ? 10 : 1;
                           const stepXPct = (stepPx / curScreenW) * 100;
                           const stepYPct = (stepPx / curScreenH) * 100;
 
@@ -1075,8 +1185,8 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
 
                           onUpdateArrow?.(
                             {
-                              x: Math.round((arrow.x + deltaX) * 10) / 10,
-                              y: Math.round((arrow.y + deltaY) * 10) / 10,
+                              x: Math.round((arrow.x + deltaX) * 1000) / 1000,
+                              y: Math.round((arrow.y + deltaY) * 1000) / 1000,
                             },
                             idx
                           );
